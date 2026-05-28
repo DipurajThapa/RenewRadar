@@ -62,6 +62,16 @@ export const AUDIT_ACTIONS = {
   // integrations
   integrationConfigured: "integration.configured",
   integrationDisabled: "integration.disabled",
+  // documents + AI extraction (Phase C)
+  documentUploaded: "document.uploaded",
+  documentDeleted: "document.deleted",
+  extractionStarted: "extraction.started",
+  extractionCompleted: "extraction.completed",
+  extractionFailed: "extraction.failed",
+  extractedFieldAccepted: "extracted_field.accepted",
+  extractedFieldEdited: "extracted_field.edited",
+  extractedFieldRejected: "extracted_field.rejected",
+  extractedFieldApplied: "extracted_field.applied",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

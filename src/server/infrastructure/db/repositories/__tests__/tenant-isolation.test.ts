@@ -81,6 +81,17 @@ import {
   countPendingApprovals,
   listPendingApprovals,
 } from "@server/infrastructure/db/repositories/approvals";
+import {
+  getDocument,
+  listDocuments,
+  listDocumentsForSubscription,
+} from "@server/infrastructure/db/repositories/documents";
+import {
+  countPendingReviewFields,
+  getMonthlyPagesUsed,
+  listExtractedFieldsForDocument,
+  listPendingReviewFields,
+} from "@server/infrastructure/db/repositories/ai-extractions";
 
 import {
   softDeleteSubscription,
@@ -417,6 +428,151 @@ describe("queries/savings", () => {
       ids.accountB.renewalEventId
     );
     expect(rightful?.savedAnnualUsdCents).toBe(50_000);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// documents queries
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("queries/documents", () => {
+  it("listDocuments + getDocument only see the scoped account", async () => {
+    const { db } = await import("@server/infrastructure/db/client");
+    const { documentsTable } = await import("@server/infrastructure/db/schema");
+
+    const [docA] = await db
+      .insert(documentsTable)
+      .values({
+        accountId: ids.accountA.id,
+        subscriptionId: ids.accountA.subscriptionId,
+        uploadedByUserId: ids.accountA.userId,
+        filename: "contract-a.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 1024,
+        storageKey: "account/A/document/x/contract-a.pdf",
+        checksumSha256: "a".repeat(64),
+        textExtractionStatus: "ready",
+      })
+      .returning();
+    const [docB] = await db
+      .insert(documentsTable)
+      .values({
+        accountId: ids.accountB.id,
+        subscriptionId: ids.accountB.subscriptionId,
+        uploadedByUserId: ids.accountB.userId,
+        filename: "contract-b.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 2048,
+        storageKey: "account/B/document/y/contract-b.pdf",
+        checksumSha256: "b".repeat(64),
+        textExtractionStatus: "ready",
+      })
+      .returning();
+
+    const aList = await listDocuments(ids.accountA.id);
+    const bList = await listDocuments(ids.accountB.id);
+    expect(aList.map((d) => d.filename)).toEqual(["contract-a.pdf"]);
+    expect(bList.map((d) => d.filename)).toEqual(["contract-b.pdf"]);
+
+    expect((await getDocument(ids.accountA.id, docB!.id))).toBeNull();
+    expect((await getDocument(ids.accountB.id, docA!.id))).toBeNull();
+    expect((await getDocument(ids.accountA.id, docA!.id))?.filename).toBe(
+      "contract-a.pdf"
+    );
+
+    const subA = await listDocumentsForSubscription(
+      ids.accountA.id,
+      ids.accountA.subscriptionId
+    );
+    const subB = await listDocumentsForSubscription(
+      ids.accountA.id,
+      ids.accountB.subscriptionId
+    );
+    expect(subA.length).toBe(1);
+    expect(subB.length).toBe(0); // cross-account = empty
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ai-extractions queries
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("queries/ai-extractions", () => {
+  it("listPendingReviewFields + countPendingReviewFields only see the scoped account", async () => {
+    const { db } = await import("@server/infrastructure/db/client");
+    const {
+      documentsTable,
+      aiExtractionRunsTable,
+      aiExtractedFieldsTable,
+    } = await import("@server/infrastructure/db/schema");
+
+    // Seed a document + run + pending field per account.
+    for (const ids2 of [ids.accountA, ids.accountB]) {
+      const [doc] = await db
+        .insert(documentsTable)
+        .values({
+          accountId: ids2.id,
+          subscriptionId: ids2.subscriptionId,
+          uploadedByUserId: ids2.userId,
+          filename: "contract.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 1024,
+          storageKey: `account/${ids2.id}/document/x/contract.pdf`,
+          checksumSha256: "c".repeat(64),
+          textExtractionStatus: "ready",
+        })
+        .returning();
+      const [run] = await db
+        .insert(aiExtractionRunsTable)
+        .values({
+          accountId: ids2.id,
+          documentId: doc!.id,
+          provider: "heuristic-stub",
+          model: "heuristic-v1",
+          promptVersion: "v1.0",
+          status: "succeeded",
+          pagesCharged: 3,
+        })
+        .returning();
+      await db.insert(aiExtractedFieldsTable).values({
+        accountId: ids2.id,
+        runId: run!.id,
+        documentId: doc!.id,
+        subscriptionId: ids2.subscriptionId,
+        fieldKey: "renewal_date",
+        rawValue: "renewal on 2027-01-01",
+        parsedValueJson: { date: "2027-01-01" } as Record<string, unknown>,
+        confidence: 90,
+        evidenceQuote: "renewal on 2027-01-01",
+        evidencePageNumber: 1,
+      });
+    }
+
+    const aPending = await listPendingReviewFields(ids.accountA.id);
+    const bPending = await listPendingReviewFields(ids.accountB.id);
+    expect(aPending.length).toBe(1);
+    expect(bPending.length).toBe(1);
+    expect(aPending[0]?.vendorName).toBe("Vendor A");
+    expect(bPending[0]?.vendorName).toBe("Vendor B");
+
+    expect(await countPendingReviewFields(ids.accountA.id)).toBe(1);
+    expect(await countPendingReviewFields(ids.accountB.id)).toBe(1);
+
+    // pagesCharged sums only the scoped account's runs.
+    expect(await getMonthlyPagesUsed(ids.accountA.id)).toBe(3);
+    expect(await getMonthlyPagesUsed(ids.accountB.id)).toBe(3);
+
+    // Document-scoped lookup respects accountId.
+    const aFields = await listExtractedFieldsForDocument(
+      ids.accountA.id,
+      aPending[0]!.documentId
+    );
+    expect(aFields.length).toBe(1);
+    const crossed = await listExtractedFieldsForDocument(
+      ids.accountB.id,
+      aPending[0]!.documentId
+    );
+    expect(crossed).toEqual([]);
   });
 });
 

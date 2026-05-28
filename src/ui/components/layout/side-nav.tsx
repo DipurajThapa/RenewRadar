@@ -10,17 +10,18 @@ import {
   ListChecks,
   ShieldCheck,
   BarChart3,
+  FileText,
+  Quote,
   Settings,
 } from "lucide-react";
 import { cn } from "@shared/utils";
 
-// Action Queue ships in Phase B (`docs/FINAL_FEATURES_AND_IMPLEMENTATION_PLAN.md`).
-// The nav entry is wired up now to lock the route in place — the page itself
-// is a Phase-B empty-state stub until the underlying query lands.
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/action-queue", label: "Action Queue", icon: ListChecks },
+  { href: "/review-queue", label: "Review Queue", icon: Quote },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+  { href: "/documents", label: "Contracts", icon: FileText },
   { href: "/subscriptions", label: "Subscriptions", icon: Inbox },
   { href: "/notice-deadlines", label: "Notice Deadlines", icon: AlertTriangle },
   { href: "/renewals", label: "Renewals", icon: CalendarDays },

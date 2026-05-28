@@ -48,3 +48,7 @@ Thumbs.db
 
 # Drizzle local artifacts (committed migrations stay; drizzle.config artifacts not)
 .drizzle-cache/
+
+# Local document storage (Phase C dev). Production swaps to R2 — see
+# src/server/infrastructure/storage/r2-not-configured.ts
+.storage/

@@ -18,7 +18,10 @@ import { sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   accountsTable,
+  aiExtractedFieldsTable,
+  aiExtractionRunsTable,
   auditLogTable,
+  documentsTable,
   integrationsTable,
   invitationsTable,
   notificationsTable,
@@ -63,6 +66,9 @@ export async function truncateAll(): Promise<void> {
       ${savingsRecordsTable},
       ${integrationsTable},
       ${invitationsTable},
+      ${aiExtractedFieldsTable},
+      ${aiExtractionRunsTable},
+      ${documentsTable},
       ${renewalEventsTable},
       ${subscriptionsTable},
       ${vendorsTable},

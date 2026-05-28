@@ -96,6 +96,44 @@ export const integrationKindEnum = pgEnum("integration_kind", [
   "ics_export",
 ]);
 
+// ─── Phase C — Documents + AI extraction ────────────────────────────────────
+
+export const documentKindEnum = pgEnum("document_kind", [
+  "contract",
+  "amendment",
+  "invoice",
+  "other",
+]);
+
+export const documentExtractionStatusEnum = pgEnum(
+  "document_extraction_status",
+  ["pending", "extracting", "ready", "failed"]
+);
+
+export const aiExtractionRunStatusEnum = pgEnum("ai_extraction_run_status", [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+]);
+
+export const aiFieldKeyEnum = pgEnum("ai_field_key", [
+  "renewal_date",
+  "notice_period_days",
+  "auto_renewal",
+  "contract_value_cents",
+  "price_increase_clause",
+  "cancellation_method",
+]);
+
+export const aiFieldReviewStatusEnum = pgEnum("ai_field_review_status", [
+  "pending",
+  "accepted",
+  "edited",
+  "rejected",
+  "applied",
+]);
+
 export const notificationTriggerEnum = pgEnum("notification_trigger", [
   "notice_window_30",
   "notice_window_14",
@@ -473,6 +511,154 @@ export const invitationsTable = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Documents — uploaded contracts, amendments, invoices
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const documentsTable = pgTable(
+  "document",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    /** Optional link to the subscription this document supports. */
+    subscriptionId: uuid("subscription_id").references(
+      () => subscriptionsTable.id,
+      { onDelete: "set null" }
+    ),
+    uploadedByUserId: uuid("uploaded_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "set null" }
+    ),
+    kind: documentKindEnum("kind").notNull().default("contract"),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    /** Storage key — provider-agnostic. Local FS today, R2 tomorrow. */
+    storageKey: text("storage_key").notNull(),
+    checksumSha256: text("checksum_sha256").notNull(),
+    pageCount: integer("page_count"),
+    textExtractionStatus: documentExtractionStatusEnum(
+      "text_extraction_status"
+    )
+      .notNull()
+      .default("pending"),
+    /** Plain text. Null until OCR/text-extract completes. */
+    textContent: text("text_content"),
+    textExtractionError: text("text_extraction_error"),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    accountIdx: index("document_account_idx").on(t.accountId),
+    subscriptionIdx: index("document_subscription_idx").on(t.subscriptionId),
+    accountUploadedIdx: index("document_account_uploaded_idx").on(
+      t.accountId,
+      t.uploadedAt
+    ),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Extraction Run — one row per extraction attempt against a document
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const aiExtractionRunsTable = pgTable(
+  "ai_extraction_run",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documentsTable.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    status: aiExtractionRunStatusEnum("status").notNull().default("queued"),
+    errorMessage: text("error_message"),
+    /** Cost in micro-USD (1/1,000,000 of a dollar) so we can sum precisely. */
+    costUsdMicros: integer("cost_usd_micros"),
+    /** Pages charged to the account's monthly budget. */
+    pagesCharged: integer("pages_charged"),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    accountIdx: index("ai_extraction_run_account_idx").on(t.accountId),
+    documentIdx: index("ai_extraction_run_document_idx").on(t.documentId),
+    accountStartedIdx: index("ai_extraction_run_account_started_idx").on(
+      t.accountId,
+      t.startedAt
+    ),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Extracted Field — one row per field per run, the unit of human review
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const aiExtractedFieldsTable = pgTable(
+  "ai_extracted_field",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => aiExtractionRunsTable.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documentsTable.id, { onDelete: "cascade" }),
+    /** Where the approved field will be applied. Required for review. */
+    subscriptionId: uuid("subscription_id").references(
+      () => subscriptionsTable.id,
+      { onDelete: "set null" }
+    ),
+    fieldKey: aiFieldKeyEnum("field_key").notNull(),
+    /** The raw value the provider returned, as a string. */
+    rawValue: text("raw_value"),
+    /** Typed value as JSON ({"date":"2026-12-31"}, {"days":30}, {"yes":true}, ...). */
+    parsedValueJson: jsonb("parsed_value_json"),
+    /** 0..1 confidence. Always populated. */
+    confidence: integer("confidence_pct").notNull(),
+    /** Verbatim quote from the source document. REQUIRED by binding principle 4. */
+    evidenceQuote: text("evidence_quote").notNull(),
+    evidencePageNumber: integer("evidence_page_number"),
+    reviewStatus: aiFieldReviewStatusEnum("review_status")
+      .notNull()
+      .default("pending"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "set null" }
+    ),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** Populated when reviewStatus = "edited" — the value the human chose. */
+    reviewerEditedValueJson: jsonb("reviewer_edited_value_json"),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    accountIdx: index("ai_extracted_field_account_idx").on(t.accountId),
+    runIdx: index("ai_extracted_field_run_idx").on(t.runId),
+    accountStatusIdx: index("ai_extracted_field_account_status_idx").on(
+      t.accountId,
+      t.reviewStatus
+    ),
+    subscriptionIdx: index("ai_extracted_field_subscription_idx").on(
+      t.subscriptionId
+    ),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Audit Log (write-only in V1)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -607,3 +793,20 @@ export type NewInvitation = typeof invitationsTable.$inferInsert;
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 export type SavingsKind = (typeof savingsKindEnum.enumValues)[number];
 export type IntegrationKind = (typeof integrationKindEnum.enumValues)[number];
+
+export type Document = typeof documentsTable.$inferSelect;
+export type NewDocument = typeof documentsTable.$inferInsert;
+export type DocumentKind = (typeof documentKindEnum.enumValues)[number];
+export type DocumentExtractionStatus =
+  (typeof documentExtractionStatusEnum.enumValues)[number];
+
+export type AiExtractionRun = typeof aiExtractionRunsTable.$inferSelect;
+export type NewAiExtractionRun = typeof aiExtractionRunsTable.$inferInsert;
+export type AiExtractionRunStatus =
+  (typeof aiExtractionRunStatusEnum.enumValues)[number];
+
+export type AiExtractedField = typeof aiExtractedFieldsTable.$inferSelect;
+export type NewAiExtractedField = typeof aiExtractedFieldsTable.$inferInsert;
+export type AiFieldKey = (typeof aiFieldKeyEnum.enumValues)[number];
+export type AiFieldReviewStatus =
+  (typeof aiFieldReviewStatusEnum.enumValues)[number];

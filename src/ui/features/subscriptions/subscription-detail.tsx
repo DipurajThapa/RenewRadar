@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Pencil, User as UserIcon, FileDown } from "lucide-react";
+import { Pencil, User as UserIcon, FileDown, FileText } from "lucide-react";
 import { Button } from "@ui/components/primitives/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
 import { Badge } from "@ui/components/primitives/badge";
@@ -8,7 +8,12 @@ import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculat
 import { urgencyClasses } from "@server/domain/notice-deadline/tone";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import { getStatusBadgeVariant } from "@server/domain/subscriptions/status-badge";
-import type { Subscription, Vendor, RenewalEvent } from "@server/infrastructure/db/schema";
+import type {
+  Document,
+  RenewalEvent,
+  Subscription,
+  Vendor,
+} from "@server/infrastructure/db/schema";
 import { DeleteSubscriptionButton } from "./delete-button";
 
 type OwnerInfo = {
@@ -22,11 +27,15 @@ export function SubscriptionDetail({
   vendor,
   renewalEvent,
   owner,
+  documents,
+  pendingFieldCount,
 }: {
   subscription: Subscription;
   vendor: Vendor;
   renewalEvent: RenewalEvent | null;
   owner: OwnerInfo;
+  documents: Document[];
+  pendingFieldCount: number;
 }) {
   const noticeDeadline = calculateNoticeDeadline(
     subscription.termEndDate,
@@ -168,6 +177,66 @@ export function SubscriptionDetail({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle>Contracts</CardTitle>
+          {pendingFieldCount > 0 && (
+            <Link
+              href="/review-queue"
+              className="text-xs text-amber-700 hover:underline inline-flex items-center gap-1"
+            >
+              {pendingFieldCount} field{pendingFieldCount === 1 ? "" : "s"} to review →
+            </Link>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {documents.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No contract attached yet.{" "}
+              <Link
+                href={`/documents?attach=${subscription.id}`}
+                className="underline underline-offset-4"
+              >
+                Upload one
+              </Link>{" "}
+              to extract its renewal date, notice period, and price clauses
+              with evidence quotes.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {documents.map((doc) => (
+                <li
+                  key={doc.id}
+                  className="flex items-center justify-between gap-3 text-sm border-b last:border-0 pb-2 last:pb-0"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{doc.filename}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {doc.textExtractionStatus === "ready"
+                          ? `Extracted · ${doc.pageCount ?? "—"} pages`
+                          : doc.textExtractionStatus === "extracting"
+                            ? "Extracting…"
+                            : doc.textExtractionStatus === "failed"
+                              ? "Extraction failed"
+                              : "Queued for extraction"}
+                      </div>
+                    </div>
+                  </div>
+                  <Link
+                    href="/documents"
+                    className="text-xs text-muted-foreground hover:underline shrink-0"
+                  >
+                    Manage →
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       {subscription.notes && (
         <Card>
