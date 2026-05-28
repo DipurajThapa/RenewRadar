@@ -21,6 +21,8 @@ import {
   aiExtractedFieldsTable,
   aiExtractionRunsTable,
   auditLogTable,
+  complianceArtifactsTable,
+  decisionContextsTable,
   documentsTable,
   integrationsTable,
   invitationsTable,
@@ -29,6 +31,7 @@ import {
   savingsRecordsTable,
   subscriptionsTable,
   usersTable,
+  vendorEventsTable,
   vendorsTable,
 } from "@server/infrastructure/db/schema";
 
@@ -69,6 +72,9 @@ export async function truncateAll(): Promise<void> {
       ${aiExtractedFieldsTable},
       ${aiExtractionRunsTable},
       ${documentsTable},
+      ${complianceArtifactsTable},
+      ${decisionContextsTable},
+      ${vendorEventsTable},
       ${renewalEventsTable},
       ${subscriptionsTable},
       ${vendorsTable},

@@ -37,6 +37,19 @@ export default function DpaPage() {
             <div>Version: 2026-05-A</div>
             <div>Effective: 2026-05-28</div>
           </div>
+
+          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <strong className="block uppercase text-xs tracking-wide">
+              ⚠ Reference template — not legal advice
+            </strong>
+            <p className="mt-1">
+              This page is the canonical text we offer to Pro and Enterprise
+              customers. It is a starting point, not a substitute for review
+              by your own counsel. The authoritative document for any signed
+              engagement is the version-stamped PDF you receive from your
+              account contact, signed by both parties.
+            </p>
+          </div>
         </header>
 
         <article className="prose prose-sm max-w-none space-y-8">

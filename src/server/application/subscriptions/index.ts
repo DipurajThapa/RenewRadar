@@ -12,6 +12,7 @@ import type {
 } from "@server/infrastructure/db/schema";
 import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
+import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vendor helpers
@@ -122,6 +123,31 @@ export async function createSubscriptionWithRenewalEvent(input: {
       after: subscription as unknown as Record<string, unknown>,
     });
 
+    // Vendor memory: this subscription becomes part of the vendor relationship
+    // timeline forever. Snapshot the initial terms so a future operator can
+    // reconstruct "what did we sign for the first time."
+    await recordVendorEvent(tx, {
+      accountId: input.accountId,
+      vendorId: input.vendorId,
+      subscriptionId: subscription.id,
+      kind: "subscription_created",
+      payload: {
+        productName: subscription.productName,
+        planName: subscription.planName,
+        billingCycle: subscription.billingCycle,
+        termStartDate: subscription.termStartDate,
+        termEndDate: subscription.termEndDate,
+        totalSeats: subscription.totalSeats,
+        unitPriceCents: subscription.unitPriceCents,
+        totalCostPerPeriodCents: subscription.totalCostPerPeriodCents,
+        autoRenew: subscription.autoRenew,
+        noticePeriodDays: subscription.noticePeriodDays,
+      },
+      actorUserId: input.actorUserId,
+      relatedEntityType: "subscription",
+      relatedEntityId: subscription.id,
+    });
+
     return subscription;
   });
 }
@@ -212,6 +238,96 @@ export async function updateSubscription(input: {
       after: updated as unknown as Record<string, unknown>,
     });
 
+    // Vendor memory: capture a structured diff of business-relevant fields
+    // so the timeline shows "what changed" without forcing the UI to diff
+    // two JSON blobs.
+    const watched: (keyof Subscription)[] = [
+      "productName",
+      "planName",
+      "billingCycle",
+      "termStartDate",
+      "termEndDate",
+      "autoRenew",
+      "noticePeriodDays",
+      "totalSeats",
+      "unitPriceCents",
+      "totalCostPerPeriodCents",
+      "status",
+      "ownerUserId",
+    ];
+    const changes = watched
+      .filter((k) => before[k] !== updated[k])
+      .map((k) => ({
+        field: k,
+        before: before[k] as unknown,
+        after: updated[k] as unknown,
+      }));
+    if (changes.length > 0) {
+      await recordVendorEvent(tx, {
+        accountId: input.accountId,
+        vendorId: updated.vendorId,
+        subscriptionId: updated.id,
+        kind: "subscription_updated",
+        payload: { changes },
+        actorUserId: input.actorUserId,
+        relatedEntityType: "subscription",
+        relatedEntityId: updated.id,
+      });
+
+      // Specialized events for the two most consequential trends: price
+      // changes and seat count changes. Lets the intelligence view answer
+      // "what's the price trajectory?" with a clean query rather than
+      // walking every subscription_updated payload.
+      if (before.unitPriceCents !== updated.unitPriceCents) {
+        const before100 = before.totalCostPerPeriodCents || 1;
+        const delta =
+          ((updated.totalCostPerPeriodCents - before.totalCostPerPeriodCents) /
+            before100) *
+          100;
+        await recordVendorEvent(tx, {
+          accountId: input.accountId,
+          vendorId: updated.vendorId,
+          subscriptionId: updated.id,
+          kind: "price_changed",
+          payload: {
+            beforeUnitPriceCents: before.unitPriceCents,
+            afterUnitPriceCents: updated.unitPriceCents,
+            beforeTotalCostPerPeriodCents: before.totalCostPerPeriodCents,
+            afterTotalCostPerPeriodCents: updated.totalCostPerPeriodCents,
+            deltaPct: Number(delta.toFixed(2)),
+          },
+          actorUserId: input.actorUserId,
+        });
+      }
+      if (before.totalSeats !== updated.totalSeats) {
+        await recordVendorEvent(tx, {
+          accountId: input.accountId,
+          vendorId: updated.vendorId,
+          subscriptionId: updated.id,
+          kind: "seat_count_changed",
+          payload: {
+            beforeSeats: before.totalSeats,
+            afterSeats: updated.totalSeats,
+            deltaSeats: updated.totalSeats - before.totalSeats,
+          },
+          actorUserId: input.actorUserId,
+        });
+      }
+      if (before.ownerUserId !== updated.ownerUserId) {
+        await recordVendorEvent(tx, {
+          accountId: input.accountId,
+          vendorId: updated.vendorId,
+          subscriptionId: updated.id,
+          kind: "owner_changed",
+          payload: {
+            beforeOwnerUserId: before.ownerUserId,
+            afterOwnerUserId: updated.ownerUserId,
+          },
+          actorUserId: input.actorUserId,
+        });
+      }
+    }
+
     return updated;
   });
 }
@@ -246,6 +362,20 @@ export async function softDeleteSubscription(input: {
       action: AUDIT_ACTIONS.subscriptionCancelled,
       target: { entityType: "subscription", entityId: input.subscriptionId },
       before: before as unknown as Record<string, unknown>,
+    });
+
+    await recordVendorEvent(tx, {
+      accountId: input.accountId,
+      vendorId: before.vendorId,
+      subscriptionId: before.id,
+      kind: "subscription_cancelled",
+      payload: {
+        productName: before.productName,
+        termEndDate: before.termEndDate,
+      },
+      actorUserId: input.actorUserId,
+      relatedEntityType: "subscription",
+      relatedEntityId: before.id,
     });
   });
 }

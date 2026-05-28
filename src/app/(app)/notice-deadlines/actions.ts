@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@server/infrastructure/db/client";
 import {
+  decisionContextsTable,
   renewalEventsTable,
   subscriptionsTable,
 } from "@server/infrastructure/db/schema";
@@ -12,7 +13,12 @@ import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 import { upsertSavingsRecordFromDecision } from "@server/application/savings";
 import { annualizeCents } from "@server/domain/billing/annualize";
-import type { SavingsKind } from "@server/infrastructure/db/schema";
+import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
+import type {
+  DecisionRationaleCode,
+  NegotiationLever,
+  SavingsKind,
+} from "@server/infrastructure/db/schema";
 
 const decisionEnum = z.enum([
   "renewed",
@@ -22,12 +28,55 @@ const decisionEnum = z.enum([
 ]);
 type DecisionType = z.infer<typeof decisionEnum>;
 
+/** Enumerated rationale codes — must match decisionRationaleCodeEnum exactly. */
+const rationaleCodeEnum = z.enum([
+  "cost_reduction",
+  "low_usage",
+  "poor_performance",
+  "no_longer_needed",
+  "found_alternative",
+  "strategic_pivot",
+  "security_concern",
+  "compliance_concern",
+  "consolidation",
+  "team_change",
+  "vendor_acquired",
+  "price_too_high",
+  "missing_features",
+  "support_issues",
+]);
+
+const negotiationLeverEnum = z.enum([
+  "none",
+  "multi_year_commit",
+  "payment_terms",
+  "volume_increase",
+  "competing_quote",
+  "executive_escalation",
+  "consolidated_with_other_products",
+  "threatened_cancellation",
+  "other",
+]);
+
 const logDecisionSchema = z.object({
   renewalEventId: z.string().uuid(),
   decision: decisionEnum,
   decisionNote: z.string().max(2000).optional().nullable(),
   adjustedSeatCount: z.coerce.number().int().min(0).optional().nullable(),
   adjustedUnitPriceCents: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .nullable(),
+  // Enhanced rationale capture — all optional so existing call sites
+  // (older form versions) continue to work.
+  rationaleCodes: z.array(rationaleCodeEnum).optional(),
+  alternativesConsidered: z.string().max(2000).optional().nullable(),
+  stakeholderUserIds: z.array(z.string().uuid()).optional(),
+  negotiationLever: negotiationLeverEnum.optional(),
+  negotiationOutcomeSummary: z.string().max(2000).optional().nullable(),
+  expectedAnnualSavingsUsdCents: z.coerce
     .number()
     .int()
     .min(0)
@@ -58,12 +107,44 @@ export async function logRenewalDecisionAction(
       ? Math.round(Number(adjustedPriceRaw) * 100)
       : null;
 
+  // Multi-select fields arrive from FormData as a series of repeated entries
+  // (e.g. <input name="rationaleCodes" value="cost_reduction" /> × N).
+  // FormData.getAll() collects them.
+  const rationaleCodes = formData.getAll("rationaleCodes").map(String).filter(Boolean);
+  const stakeholderUserIds = formData
+    .getAll("stakeholderUserIds")
+    .map(String)
+    .filter(Boolean);
+  const negotiationLeverRaw = formData.get("negotiationLever");
+  const negotiationOutcomeRaw = formData.get("negotiationOutcomeSummary");
+  const alternativesRaw = formData.get("alternativesConsidered");
+  const expectedSavingsRaw = formData.get("expectedAnnualSavingsUsdCents");
+
   const parsed = logDecisionSchema.safeParse({
     renewalEventId: formData.get("renewalEventId"),
     decision: formData.get("decision"),
     decisionNote: decisionNote === "" ? null : decisionNote,
     adjustedSeatCount,
     adjustedUnitPriceCents,
+    rationaleCodes: rationaleCodes.length > 0 ? rationaleCodes : undefined,
+    alternativesConsidered:
+      typeof alternativesRaw === "string" && alternativesRaw.trim()
+        ? alternativesRaw
+        : null,
+    stakeholderUserIds:
+      stakeholderUserIds.length > 0 ? stakeholderUserIds : undefined,
+    negotiationLever:
+      typeof negotiationLeverRaw === "string" && negotiationLeverRaw
+        ? negotiationLeverRaw
+        : undefined,
+    negotiationOutcomeSummary:
+      typeof negotiationOutcomeRaw === "string" && negotiationOutcomeRaw.trim()
+        ? negotiationOutcomeRaw
+        : null,
+    expectedAnnualSavingsUsdCents:
+      expectedSavingsRaw && String(expectedSavingsRaw).trim() !== ""
+        ? Math.round(Number(expectedSavingsRaw) * 100)
+        : null,
   });
 
   if (!parsed.success) {
@@ -156,6 +237,84 @@ export async function logRenewalDecisionAction(
           adjustedSeatCount: parsed.data.adjustedSeatCount,
           adjustedUnitPriceCents: parsed.data.adjustedUnitPriceCents,
         },
+      });
+
+      // Decision context — captures the structured "why" behind the decision
+      // so future operators can reconstruct the business reasoning years
+      // later. Optional; only written when the user filled in rationale UI.
+      const hasContext =
+        (parsed.data.rationaleCodes && parsed.data.rationaleCodes.length > 0) ||
+        parsed.data.alternativesConsidered ||
+        (parsed.data.stakeholderUserIds &&
+          parsed.data.stakeholderUserIds.length > 0) ||
+        (parsed.data.negotiationLever &&
+          parsed.data.negotiationLever !== "none") ||
+        parsed.data.negotiationOutcomeSummary ||
+        parsed.data.expectedAnnualSavingsUsdCents;
+      if (hasContext) {
+        await tx
+          .insert(decisionContextsTable)
+          .values({
+            accountId: account.id,
+            renewalEventId: parsed.data.renewalEventId,
+            rationaleCodesJson: (parsed.data.rationaleCodes ?? []) as DecisionRationaleCode[] as unknown as Record<string, unknown>,
+            alternativesConsidered: parsed.data.alternativesConsidered ?? null,
+            stakeholdersConsultedJson:
+              (parsed.data.stakeholderUserIds ?? []) as unknown as Record<string, unknown>,
+            negotiationLever:
+              (parsed.data.negotiationLever ?? "none") as NegotiationLever,
+            negotiationOutcomeSummary:
+              parsed.data.negotiationOutcomeSummary ?? null,
+            expectedAnnualSavingsUsdCents:
+              parsed.data.expectedAnnualSavingsUsdCents ?? null,
+            createdByUserId: user.id,
+          })
+          .onConflictDoUpdate({
+            target: decisionContextsTable.renewalEventId,
+            set: {
+              rationaleCodesJson:
+                (parsed.data.rationaleCodes ?? []) as DecisionRationaleCode[] as unknown as Record<string, unknown>,
+              alternativesConsidered:
+                parsed.data.alternativesConsidered ?? null,
+              stakeholdersConsultedJson:
+                (parsed.data.stakeholderUserIds ?? []) as unknown as Record<string, unknown>,
+              negotiationLever:
+                (parsed.data.negotiationLever ?? "none") as NegotiationLever,
+              negotiationOutcomeSummary:
+                parsed.data.negotiationOutcomeSummary ?? null,
+              expectedAnnualSavingsUsdCents:
+                parsed.data.expectedAnnualSavingsUsdCents ?? null,
+              updatedAt: new Date(),
+            },
+          });
+      }
+
+      // Vendor memory — record the decision so the per-vendor timeline shows
+      // it forever (with full rationale).
+      await recordVendorEvent(tx, {
+        accountId: account.id,
+        vendorId: sub.vendorId,
+        subscriptionId: sub.id,
+        kind: "renewal_decision_logged",
+        payload: {
+          decision: parsed.data.decision,
+          rationaleCodes: parsed.data.rationaleCodes as
+            | DecisionRationaleCode[]
+            | undefined,
+          alternativesConsidered: parsed.data.alternativesConsidered,
+          stakeholderUserIds: parsed.data.stakeholderUserIds,
+          negotiationLever: parsed.data.negotiationLever as
+            | NegotiationLever
+            | undefined,
+          negotiationOutcomeSummary: parsed.data.negotiationOutcomeSummary,
+          expectedAnnualSavingsUsdCents:
+            parsed.data.expectedAnnualSavingsUsdCents,
+          adjustedSeatCount: parsed.data.adjustedSeatCount,
+          adjustedUnitPriceCents: parsed.data.adjustedUnitPriceCents,
+        },
+        actorUserId: user.id,
+        relatedEntityType: "renewal_event",
+        relatedEntityId: parsed.data.renewalEventId,
       });
 
       // Compute the savings context to return — applied OUTSIDE this

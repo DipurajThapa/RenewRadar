@@ -215,8 +215,11 @@ export function CancellationLetterDraft(props: {
         </div>
 
         <p className="text-xs text-amber-900 italic pt-3 border-t border-amber-200">
-          Reminder: Renewal Radar prepared this draft. We don't send emails to
-          vendors on your behalf — you review, click send, and the message
+          This is a boilerplate template, not legal advice. Review for fit
+          with your contract's specific notice clauses (form, recipient,
+          timing) and have counsel review for high-value or complex
+          terminations. Renewal Radar prepared this draft — we don't send
+          emails to vendors on your behalf. You review, click send, and the message
           comes from you.
         </p>
       </CardContent>

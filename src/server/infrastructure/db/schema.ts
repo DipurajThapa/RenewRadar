@@ -134,6 +134,85 @@ export const aiFieldReviewStatusEnum = pgEnum("ai_field_review_status", [
   "applied",
 ]);
 
+// ─── Vendor memory + decision intelligence ───────────────────────────────────
+
+/**
+ * Event-sourced vendor history. New event kinds added here are non-breaking
+ * — old rows keep their original kind value, the type union just grows.
+ */
+export const vendorEventKindEnum = pgEnum("vendor_event_kind", [
+  "subscription_created",
+  "subscription_updated",
+  "subscription_cancelled",
+  "contract_uploaded",
+  "contract_field_applied",
+  "renewal_decision_logged",
+  "renewal_decision_approved",
+  "renewal_decision_rejected",
+  "savings_recorded",
+  "price_changed",
+  "seat_count_changed",
+  "owner_changed",
+  "compliance_doc_received",
+  "compliance_doc_expired",
+  "notice_deadline_missed",
+  "user_note_added",
+]);
+
+/** Multi-select rationale codes captured at decide-now time. */
+export const decisionRationaleCodeEnum = pgEnum("decision_rationale_code", [
+  "cost_reduction",
+  "low_usage",
+  "poor_performance",
+  "no_longer_needed",
+  "found_alternative",
+  "strategic_pivot",
+  "security_concern",
+  "compliance_concern",
+  "consolidation",
+  "team_change",
+  "vendor_acquired",
+  "price_too_high",
+  "missing_features",
+  "support_issues",
+]);
+
+/** Lever the user pulled in the negotiation, if any. */
+export const negotiationLeverEnum = pgEnum("negotiation_lever", [
+  "none",
+  "multi_year_commit",
+  "payment_terms",
+  "volume_increase",
+  "competing_quote",
+  "executive_escalation",
+  "consolidated_with_other_products",
+  "threatened_cancellation",
+  "other",
+]);
+
+/** Kinds of compliance documents we track per vendor. */
+export const complianceArtifactKindEnum = pgEnum("compliance_artifact_kind", [
+  "dpa",
+  "msa",
+  "nda",
+  "soc2_type_ii_report",
+  "soc2_type_i_report",
+  "iso_27001",
+  "iso_27018",
+  "iso_27701",
+  "hipaa_baa",
+  "pci_aoc",
+  "gdpr_addendum",
+  "insurance_certificate",
+  "w9",
+  "w8_ben_e",
+  "vendor_security_questionnaire",
+  "subprocessor_list",
+  "penetration_test_summary",
+  "incident_response_plan",
+  "other",
+]);
+
 export const notificationTriggerEnum = pgEnum("notification_trigger", [
   "notice_window_30",
   "notice_window_14",
@@ -659,6 +738,166 @@ export const aiExtractedFieldsTable = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Vendor Event — immutable per-vendor timeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Append-only log of every significant moment in the relationship with a
+ * vendor. Survives years of team turnover; lets future operators answer
+ * "what happened with this vendor over time?"
+ *
+ * Distinct from `audit_log`: the audit log is for security review (who
+ * mutated what row). Vendor events are for business memory (what happened
+ * in our relationship with this vendor, derivable into intelligence).
+ *
+ * Rule: never UPDATE or DELETE these rows. Append only.
+ */
+export const vendorEventsTable = pgTable(
+  "vendor_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendorsTable.id, { onDelete: "cascade" }),
+    subscriptionId: uuid("subscription_id").references(
+      () => subscriptionsTable.id,
+      { onDelete: "set null" }
+    ),
+    kind: vendorEventKindEnum("kind").notNull(),
+    payload: jsonb("payload").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
+    relatedEntityType: text("related_entity_type"),
+    relatedEntityId: uuid("related_entity_id"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    accountVendorOccurredIdx: index(
+      "vendor_event_account_vendor_occurred_idx"
+    ).on(t.accountId, t.vendorId, t.occurredAt),
+    accountKindIdx: index("vendor_event_account_kind_idx").on(
+      t.accountId,
+      t.kind
+    ),
+    subscriptionIdx: index("vendor_event_subscription_idx").on(
+      t.subscriptionId
+    ),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Decision Context — structured rationale captured at decide-now time
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One row per renewal_event that has had a decision logged with the
+ * enhanced rationale UI. Older renewal events without a context row keep
+ * working — the timeline just doesn't have the rich "why" for those.
+ */
+export const decisionContextsTable = pgTable(
+  "decision_context",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    renewalEventId: uuid("renewal_event_id")
+      .notNull()
+      .references(() => renewalEventsTable.id, { onDelete: "cascade" })
+      .unique(),
+    /** Multi-select rationale codes. JSON array of decision_rationale_code values. */
+    rationaleCodesJson: jsonb("rationale_codes_json").notNull(),
+    alternativesConsidered: text("alternatives_considered"),
+    /** JSON array of user UUIDs from the same account. */
+    stakeholdersConsultedJson: jsonb("stakeholders_consulted_json"),
+    negotiationLever: negotiationLeverEnum("negotiation_lever")
+      .notNull()
+      .default("none"),
+    negotiationOutcomeSummary: text("negotiation_outcome_summary"),
+    expectedAnnualSavingsUsdCents: integer("expected_annual_savings_usd_cents"),
+    expectedSavingsRealizedAt: timestamp("expected_savings_realized_at", {
+      withTimezone: true,
+    }),
+    createdByUserId: uuid("created_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    accountRenewalUnique: unique("decision_context_account_renewal_unique").on(
+      t.accountId,
+      t.renewalEventId
+    ),
+    accountIdx: index("decision_context_account_idx").on(t.accountId),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compliance Artifact — record-keeping for legal / security documents
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Track which legal and security documents are on file for each vendor.
+ * NOT legal review or risk scoring — this is record-keeping.
+ */
+export const complianceArtifactsTable = pgTable(
+  "compliance_artifact",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendorsTable.id, { onDelete: "cascade" }),
+    kind: complianceArtifactKindEnum("kind").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    documentId: uuid("document_id").references(() => documentsTable.id, {
+      onDelete: "set null",
+    }),
+    note: text("note"),
+    createdByUserId: uuid("created_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    accountVendorIdx: index("compliance_artifact_account_vendor_idx").on(
+      t.accountId,
+      t.vendorId
+    ),
+    accountExpiresIdx: index("compliance_artifact_account_expires_idx").on(
+      t.accountId,
+      t.expiresAt
+    ),
+    accountVendorKindUnique: unique(
+      "compliance_artifact_account_vendor_kind_unique"
+    ).on(t.accountId, t.vendorId, t.kind),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Audit Log (write-only in V1)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -810,3 +1049,20 @@ export type NewAiExtractedField = typeof aiExtractedFieldsTable.$inferInsert;
 export type AiFieldKey = (typeof aiFieldKeyEnum.enumValues)[number];
 export type AiFieldReviewStatus =
   (typeof aiFieldReviewStatusEnum.enumValues)[number];
+
+export type VendorEvent = typeof vendorEventsTable.$inferSelect;
+export type NewVendorEvent = typeof vendorEventsTable.$inferInsert;
+export type VendorEventKind = (typeof vendorEventKindEnum.enumValues)[number];
+
+export type DecisionContext = typeof decisionContextsTable.$inferSelect;
+export type NewDecisionContext = typeof decisionContextsTable.$inferInsert;
+export type DecisionRationaleCode =
+  (typeof decisionRationaleCodeEnum.enumValues)[number];
+export type NegotiationLever =
+  (typeof negotiationLeverEnum.enumValues)[number];
+
+export type ComplianceArtifact = typeof complianceArtifactsTable.$inferSelect;
+export type NewComplianceArtifact =
+  typeof complianceArtifactsTable.$inferInsert;
+export type ComplianceArtifactKind =
+  (typeof complianceArtifactKindEnum.enumValues)[number];

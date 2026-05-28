@@ -78,6 +78,16 @@ import {
 } from "@server/infrastructure/db/repositories/invitations";
 import { createInvitation } from "@server/application/invitations";
 import {
+  getVendor,
+  getVendorIntelligence,
+  listVendorEvents,
+  listVendorsWithIntelligence,
+} from "@server/infrastructure/db/repositories/vendor-memory";
+import {
+  listComplianceArtifactsForVendor,
+  listExpiringComplianceArtifacts,
+} from "@server/infrastructure/db/repositories/compliance";
+import {
   countPendingApprovals,
   listPendingApprovals,
 } from "@server/infrastructure/db/repositories/approvals";
@@ -428,6 +438,108 @@ describe("queries/savings", () => {
       ids.accountB.renewalEventId
     );
     expect(rightful?.savedAnnualUsdCents).toBe(50_000);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// vendor-memory queries
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("queries/vendor-memory", () => {
+  it("listVendorEvents / getVendor / listVendorsWithIntelligence only see scoped account", async () => {
+    const { db } = await import("@server/infrastructure/db/client");
+    const { vendorEventsTable } = await import("@server/infrastructure/db/schema");
+
+    await db.insert(vendorEventsTable).values([
+      {
+        accountId: ids.accountA.id,
+        vendorId: ids.accountA.vendorId,
+        kind: "user_note_added" as const,
+        payload: { note: "A-note" } as Record<string, unknown>,
+      },
+      {
+        accountId: ids.accountB.id,
+        vendorId: ids.accountB.vendorId,
+        kind: "user_note_added" as const,
+        payload: { note: "B-note" } as Record<string, unknown>,
+      },
+    ]);
+
+    const aEvents = await listVendorEvents(ids.accountA.id, ids.accountA.vendorId);
+    const bEvents = await listVendorEvents(ids.accountB.id, ids.accountB.vendorId);
+    expect(aEvents.length).toBeGreaterThanOrEqual(1);
+    expect(bEvents.length).toBeGreaterThanOrEqual(1);
+    // Cross-account lookup must return empty / null
+    const crossed = await listVendorEvents(ids.accountA.id, ids.accountB.vendorId);
+    expect(crossed).toEqual([]);
+    expect(await getVendor(ids.accountA.id, ids.accountB.vendorId)).toBeNull();
+    expect((await getVendor(ids.accountA.id, ids.accountA.vendorId))?.name).toBe(
+      "Vendor A"
+    );
+
+    const aList = await listVendorsWithIntelligence(ids.accountA.id);
+    const bList = await listVendorsWithIntelligence(ids.accountB.id);
+    expect(aList.map((v) => v.name)).toEqual(["Vendor A"]);
+    expect(bList.map((v) => v.name)).toEqual(["Vendor B"]);
+
+    const aIntel = await getVendorIntelligence(ids.accountA.id, ids.accountA.vendorId);
+    expect(aIntel.totalSpendLifetimeCents).toBe(100_000);
+    expect(aIntel.subscriptionCount).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// compliance queries
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("queries/compliance", () => {
+  it("listComplianceArtifactsForVendor / listExpiringComplianceArtifacts only see scoped account", async () => {
+    const { db } = await import("@server/infrastructure/db/client");
+    const { complianceArtifactsTable } = await import(
+      "@server/infrastructure/db/schema"
+    );
+
+    const expiresSoon = new Date(Date.now() + 14 * 86_400_000);
+    await db.insert(complianceArtifactsTable).values([
+      {
+        accountId: ids.accountA.id,
+        vendorId: ids.accountA.vendorId,
+        kind: "dpa" as const,
+        receivedAt: new Date(),
+        expiresAt: expiresSoon,
+      },
+      {
+        accountId: ids.accountB.id,
+        vendorId: ids.accountB.vendorId,
+        kind: "dpa" as const,
+        receivedAt: new Date(),
+        expiresAt: expiresSoon,
+      },
+    ]);
+
+    const a = await listComplianceArtifactsForVendor(
+      ids.accountA.id,
+      ids.accountA.vendorId
+    );
+    const b = await listComplianceArtifactsForVendor(
+      ids.accountB.id,
+      ids.accountB.vendorId
+    );
+    expect(a.length).toBe(1);
+    expect(b.length).toBe(1);
+
+    const crossed = await listComplianceArtifactsForVendor(
+      ids.accountA.id,
+      ids.accountB.vendorId
+    );
+    expect(crossed).toEqual([]);
+
+    const aExpiring = await listExpiringComplianceArtifacts(ids.accountA.id, 30);
+    const bExpiring = await listExpiringComplianceArtifacts(ids.accountB.id, 30);
+    expect(aExpiring.length).toBe(1);
+    expect(bExpiring.length).toBe(1);
+    expect(aExpiring[0]?.vendorName).toBe("Vendor A");
+    expect(bExpiring[0]?.vendorName).toBe("Vendor B");
   });
 });
 

@@ -7,6 +7,7 @@ import {
 import type { SavingsKind } from "@server/infrastructure/db/schema";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
+import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
 
 /**
  * Derive how much was saved (annualized cents) from a renewal decision.
@@ -121,6 +122,31 @@ export async function upsertSavingsRecordFromDecision(input: {
         target: { entityType: "savings_record", entityId: created.id },
         after: created as unknown as Record<string, unknown>,
       });
+
+      // Vendor memory — record savings so the per-vendor intelligence view
+      // can show "you've saved $X with this vendor over the last 3 years."
+      const [sub] = await tx
+        .select({ vendorId: subscriptionsTable.vendorId })
+        .from(subscriptionsTable)
+        .where(eq(subscriptionsTable.id, input.subscriptionId))
+        .limit(1);
+      if (sub) {
+        await recordVendorEvent(tx, {
+          accountId: input.accountId,
+          vendorId: sub.vendorId,
+          subscriptionId: input.subscriptionId,
+          kind: "savings_recorded",
+          payload: {
+            kind: input.kind,
+            baselineAnnualUsdCents: input.baselineAnnualUsdCents,
+            newAnnualUsdCents,
+            savedAnnualUsdCents,
+          },
+          actorUserId: input.actorUserId,
+          relatedEntityType: "savings_record",
+          relatedEntityId: created.id,
+        });
+      }
     }
   });
 }
