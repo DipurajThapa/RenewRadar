@@ -1,0 +1,6 @@
+vendor_name,product_name,plan_name,billing_cycle,term_start_date,term_end_date,total_seats,unit_price_dollars,notice_period_days,auto_renew,notes
+Atlassian,Jira Software,Standard,annual,2025-07-14,2026-07-14,50,12.00,30,true,"Renegotiated 2024-Q4, locked at $12/seat"
+Datadog,Pro,Pro,annual,2025-04-21,2026-04-21,10,70.00,30,true,
+Figma,Org plan,Org,annual,2025-09-01,2026-09-01,15,15.00,30,true,
+Notion,Plus,Plus,annual,2025-03-01,2026-03-01,25,10.00,30,true,
+Slack,Pro,Pro,annual,2025-08-15,2026-08-15,40,7.25,30,true,"Negotiated mid-cycle"

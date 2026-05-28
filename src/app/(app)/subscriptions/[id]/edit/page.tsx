@@ -1,0 +1,51 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { notFound } from "next/navigation";
+import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { getSubscriptionDetail } from "@/lib/db/queries/subscriptions";
+import { listAccountUsers } from "@/lib/db/queries/users";
+import { SubscriptionForm } from "@/components/subscriptions/subscription-form";
+
+export const dynamic = "force-dynamic";
+
+export default async function EditSubscriptionPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const { account, user } = await getCurrentAccountAndUser();
+  const [detail, users] = await Promise.all([
+    getSubscriptionDetail(account.id, params.id),
+    listAccountUsers(account.id),
+  ]);
+
+  if (!detail) {
+    notFound();
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <Link
+          href={`/subscriptions/${detail.subscription.id}`}
+          className="inline-flex items-center text-sm text-muted-foreground hover:underline"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Back to {detail.vendor.name} — {detail.subscription.productName}
+        </Link>
+      </div>
+
+      <header>
+        <h1 className="text-2xl font-semibold">Edit subscription</h1>
+      </header>
+
+      <SubscriptionForm
+        mode="edit"
+        subscription={detail.subscription}
+        vendorName={detail.vendor.name}
+        users={users}
+        currentUserId={user.id}
+      />
+    </div>
+  );
+}

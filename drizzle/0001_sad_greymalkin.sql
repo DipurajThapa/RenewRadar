@@ -1,0 +1,2 @@
+ALTER TABLE "notification" DROP CONSTRAINT "notification_dedupe";--> statement-breakpoint
+ALTER TABLE "notification" ADD CONSTRAINT "notification_dedupe" UNIQUE("user_id","trigger","entity_type","entity_id","channel");
