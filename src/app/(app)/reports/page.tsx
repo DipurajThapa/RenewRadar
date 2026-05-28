@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { Download, TrendingDown, AlertTriangle, Calendar } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   getExposureByStatus,
   getMissedDeadlinesByMonth,
-} from "@/lib/db/queries/reports";
+} from "@server/infrastructure/db/repositories/reports";
 import {
   getSavingsByMonth,
   getSavingsTotals,
   listSavingsForAccount,
-} from "@/lib/db/queries/savings";
-import { formatCurrency, formatDate } from "@/lib/utils";
+} from "@server/infrastructure/db/repositories/savings";
+import { formatCurrency, formatDate } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
 

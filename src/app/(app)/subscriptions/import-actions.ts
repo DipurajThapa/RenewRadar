@@ -2,16 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { db } from "@/lib/db";
-import { usersTable } from "@/lib/db/schema";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { db } from "@server/infrastructure/db/client";
+import { usersTable } from "@server/infrastructure/db/schema";
 import {
   createSubscriptionWithRenewalEvent,
   ensureVendor,
-} from "@/lib/db/mutations/subscriptions";
-import { countActiveSubscriptions } from "@/lib/db/queries/subscriptions";
-import { PLAN_LIMITS } from "@/lib/billing/plans";
-import { parseSubscriptionCsv } from "@/lib/csv/subscriptions-format";
+} from "@server/application/subscriptions";
+import { countActiveSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
+import { PLAN_LIMITS } from "@server/infrastructure/billing/plans";
+import { parseSubscriptionCsv } from "@server/infrastructure/csv/subscriptions-format";
 
 export type ImportRowResult =
   | { ok: true; rowNumber: number; subscriptionId: string }

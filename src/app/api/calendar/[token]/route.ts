@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, gte } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
   subscriptionsTable,
   vendorsTable,
-} from "@/lib/db/schema";
-import { findAccountByIcsToken } from "@/lib/db/queries/integrations";
-import { calculateNoticeDeadline } from "@/lib/notice-deadline/calculate";
+} from "@server/infrastructure/db/schema";
+import { findAccountByIcsToken } from "@server/infrastructure/db/repositories/integrations";
+import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
 
 export const dynamic = "force-dynamic";
 

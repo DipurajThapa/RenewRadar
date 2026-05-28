@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { ListChecks } from "lucide-react";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   listActionQueueRows,
   rollupActionQueue,
-} from "@/lib/db/queries/action-queue";
-import { ActionQueueTable } from "@/components/action-queue/queue-table";
-import { EmptyState } from "@/components/shared/empty-state";
-import { Card, CardContent } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/utils";
+} from "@server/infrastructure/db/repositories/action-queue";
+import { ActionQueueTable } from "@ui/features/action-queue/queue-table";
+import { EmptyState } from "@ui/components/shared/empty-state";
+import { Card, CardContent } from "@ui/components/primitives/card";
+import { formatCurrency } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
 

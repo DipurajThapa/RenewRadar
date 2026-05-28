@@ -3,13 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { ForbiddenError, requireRole } from "@/lib/auth/rbac";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import {
   disableIntegration,
   upsertIntegration,
-} from "@/lib/db/mutations/integrations";
-import { getIcsIntegration } from "@/lib/db/queries/integrations";
+} from "@server/application/integrations";
+import { getIcsIntegration } from "@server/infrastructure/db/repositories/integrations";
 
 const slackUrlSchema = z
   .string()

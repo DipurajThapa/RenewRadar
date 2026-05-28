@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { getSubscriptionDetail } from "@/lib/db/queries/subscriptions";
-import { annualizeCents } from "@/lib/billing/annualize";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { getSubscriptionDetail } from "@server/infrastructure/db/repositories/subscriptions";
+import { annualizeCents } from "@server/domain/billing/annualize";
 import {
   calculateNoticeDeadline,
   daysUntilNoticeDeadline,
-} from "@/lib/notice-deadline/calculate";
-import { scoreRisk } from "@/lib/risk/score";
-import { renderPrepPackPdf } from "@/lib/pdf/prep-pack";
+} from "@server/domain/notice-deadline/calculate";
+import { scoreRisk } from "@server/domain/risk/score";
+import { renderPrepPackPdf } from "@server/infrastructure/pdf/prep-pack";
 
 export const dynamic = "force-dynamic";
 

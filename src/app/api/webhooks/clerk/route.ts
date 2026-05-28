@@ -2,9 +2,9 @@ import { headers } from "next/headers";
 import { Webhook } from "svix";
 import type { WebhookEvent } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
-import { provisionNewUser } from "@/lib/auth/provision";
-import { db } from "@/lib/db";
-import { usersTable } from "@/lib/db/schema";
+import { provisionNewUser } from "@server/application/auth/provision";
+import { db } from "@server/infrastructure/db/client";
+import { usersTable } from "@server/infrastructure/db/schema";
 
 export const runtime = "nodejs";
 

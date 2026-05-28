@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { TopNav } from "@/components/layout/top-nav";
-import { SideNav } from "@/components/layout/side-nav";
-import { DemoBanner } from "@/components/layout/demo-banner";
-import { Toaster } from "@/components/ui/toaster";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { isDemoMode } from "@/lib/demo-mode";
+import { TopNav } from "@ui/components/layout/top-nav";
+import { SideNav } from "@ui/components/layout/side-nav";
+import { DemoBanner } from "@ui/components/layout/demo-banner";
+import { Toaster } from "@ui/components/primitives/toaster";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { isDemoMode } from "@server/middleware/demo-mode";
 
 export default async function AppLayout({
   children,

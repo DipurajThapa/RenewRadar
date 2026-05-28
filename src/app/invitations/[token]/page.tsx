@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { getInvitationByToken } from "@/lib/db/queries/invitations";
-import { db } from "@/lib/db";
+import { Card, CardContent } from "@ui/components/primitives/card";
+import { Button } from "@ui/components/primitives/button";
+import { getInvitationByToken } from "@server/infrastructure/db/repositories/invitations";
+import { db } from "@server/infrastructure/db/client";
 import { eq } from "drizzle-orm";
-import { accountsTable } from "@/lib/db/schema";
+import { accountsTable } from "@server/infrastructure/db/schema";
 
 export const dynamic = "force-dynamic";
 

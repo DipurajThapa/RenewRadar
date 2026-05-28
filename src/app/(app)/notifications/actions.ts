@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import { notificationsTable } from "@/lib/db/schema";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { db } from "@server/infrastructure/db/client";
+import { notificationsTable } from "@server/infrastructure/db/schema";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 
 const markReadSchema = z.object({
   notificationId: z.string().uuid(),

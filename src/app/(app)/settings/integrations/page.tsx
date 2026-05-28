@@ -1,12 +1,12 @@
 import { headers } from "next/headers";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   getIcsIntegration,
   getSlackIntegration,
-} from "@/lib/db/queries/integrations";
-import { SlackIntegrationCard } from "@/components/settings/slack-integration-card";
-import { IcsIntegrationCard } from "@/components/settings/ics-integration-card";
+} from "@server/infrastructure/db/repositories/integrations";
+import { SlackIntegrationCard } from "@ui/features/settings/slack-integration-card";
+import { IcsIntegrationCard } from "@ui/features/settings/ics-integration-card";
 
 export const dynamic = "force-dynamic";
 

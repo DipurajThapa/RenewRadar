@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   listAuditEntries,
   listAuditEntityTypes,
   type AuditLogEntry,
-} from "@/lib/db/queries/dashboard";
-import { AuditFilter } from "@/components/settings/audit-filter";
+} from "@server/infrastructure/db/repositories/dashboard";
+import { AuditFilter } from "@ui/features/settings/audit-filter";
 
 export const dynamic = "force-dynamic";
 

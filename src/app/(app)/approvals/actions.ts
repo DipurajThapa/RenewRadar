@@ -2,19 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
   subscriptionsTable,
-} from "@/lib/db/schema";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { ForbiddenError, requireRole } from "@/lib/auth/rbac";
-import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit/write";
+} from "@server/infrastructure/db/schema";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
+import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 import {
   upsertSavingsRecordFromDecision,
-} from "@/lib/db/mutations/savings";
-import { annualizeCents } from "@/lib/billing/annualize";
-import type { SavingsKind } from "@/lib/db/schema";
+} from "@server/application/savings";
+import { annualizeCents } from "@server/domain/billing/annualize";
+import type { SavingsKind } from "@server/infrastructure/db/schema";
 
 export type ApprovalResult = { ok: true } | { ok: false; error: string };
 

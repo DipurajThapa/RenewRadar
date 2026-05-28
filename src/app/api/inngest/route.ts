@@ -1,9 +1,9 @@
 import { serve } from "inngest/next";
-import { inngest } from "@/inngest/client";
-import { noticeDeadlineAlerts } from "@/inngest/functions/notice-deadline-alerts";
-import { renewalEventStateUpdate } from "@/inngest/functions/renewal-event-state";
-import { weeklyDigest, monthlySummary } from "@/inngest/functions/digests";
-import { slackDailySummary } from "@/inngest/functions/slack-daily-summary";
+import { inngest } from "@server/jobs/client";
+import { noticeDeadlineAlerts } from "@server/jobs/functions/notice-deadline-alerts";
+import { renewalEventStateUpdate } from "@server/jobs/functions/renewal-event-state";
+import { weeklyDigest, monthlySummary } from "@server/jobs/functions/digests";
+import { slackDailySummary } from "@server/jobs/functions/slack-daily-summary";
 
 // Functions registered with Inngest:
 //   - renewalEventStateUpdate (07:00 UTC daily)        — progress state machine

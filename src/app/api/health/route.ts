@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db } from "@server/infrastructure/db/client";
 import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";

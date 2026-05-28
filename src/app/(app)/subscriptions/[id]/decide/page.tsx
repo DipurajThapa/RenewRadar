@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { ArrowLeft, TrendingDown } from "lucide-react";
 import { notFound } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { getRenewalEventWithContext } from "@/lib/db/queries/renewals";
-import { getSavingsForRenewalEvent } from "@/lib/db/queries/savings";
-import { DecideNowHeader } from "@/components/decide-now/header";
-import { DecideNowFacts } from "@/components/decide-now/facts";
-import { DecideNowForm } from "@/components/decide-now/form";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import { annualizeCents } from "@/lib/billing/annualize";
-import type { SavingsRow } from "@/lib/db/queries/savings";
+import { Card, CardContent } from "@ui/components/primitives/card";
+import { Button } from "@ui/components/primitives/button";
+import { Badge } from "@ui/components/primitives/badge";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { getRenewalEventWithContext } from "@server/infrastructure/db/repositories/renewals";
+import { getSavingsForRenewalEvent } from "@server/infrastructure/db/repositories/savings";
+import { DecideNowHeader } from "@ui/features/decide-now/header";
+import { DecideNowFacts } from "@ui/features/decide-now/facts";
+import { DecideNowForm } from "@ui/features/decide-now/form";
+import { formatCurrency, formatDate } from "@shared/utils";
+import { annualizeCents } from "@server/domain/billing/annualize";
+import type { SavingsRow } from "@server/infrastructure/db/repositories/savings";
 
 type Props = {
   params: { id: string };

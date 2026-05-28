@@ -1,6 +1,6 @@
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AccountForm } from "@/components/settings/account-form";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { AccountForm } from "@ui/features/settings/account-form";
 
 export const dynamic = "force-dynamic";
 

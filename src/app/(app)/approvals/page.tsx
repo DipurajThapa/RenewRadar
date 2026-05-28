@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { hasRole } from "@/lib/auth/rbac";
-import { listPendingApprovals } from "@/lib/db/queries/approvals";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/shared/empty-state";
-import { ApprovalRow } from "@/components/approvals/approval-row";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { hasRole } from "@server/middleware/rbac";
+import { listPendingApprovals } from "@server/infrastructure/db/repositories/approvals";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { EmptyState } from "@ui/components/shared/empty-state";
+import { ApprovalRow } from "@ui/features/approvals/approval-row";
 
 export const dynamic = "force-dynamic";
 

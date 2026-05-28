@@ -3,16 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
   subscriptionsTable,
-} from "@/lib/db/schema";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit/write";
-import { upsertSavingsRecordFromDecision } from "@/lib/db/mutations/savings";
-import { annualizeCents } from "@/lib/billing/annualize";
-import type { SavingsKind } from "@/lib/db/schema";
+} from "@server/infrastructure/db/schema";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
+import { upsertSavingsRecordFromDecision } from "@server/application/savings";
+import { annualizeCents } from "@server/domain/billing/annualize";
+import type { SavingsKind } from "@server/infrastructure/db/schema";
 
 const decisionEnum = z.enum([
   "renewed",

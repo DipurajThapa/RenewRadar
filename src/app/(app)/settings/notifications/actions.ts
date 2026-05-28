@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import { usersTable } from "@/lib/db/schema";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit/write";
+import { db } from "@server/infrastructure/db/client";
+import { usersTable } from "@server/infrastructure/db/schema";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 
 // Triggers whose alerts cannot be muted — these are the wedge protections.
 const LOCKED_TRIGGERS = new Set([

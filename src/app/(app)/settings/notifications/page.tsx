@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { NotificationPrefsForm } from "@ui/features/settings/notification-prefs-form";
 
 export const dynamic = "force-dynamic";
 

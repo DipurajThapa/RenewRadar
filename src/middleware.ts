@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { isDemoMode } from "@/lib/demo-mode";
+import { isDemoMode } from "@server/middleware/demo-mode";
 
 const isPublicRoute = createRouteMatcher([
   "/",

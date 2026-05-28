@@ -1,10 +1,10 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { Card, CardContent } from "@ui/components/primitives/card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   listRenewalsInRange,
   type RenewalRange,
-} from "@/lib/db/queries/renewals";
-import { RenewalCalendar } from "@/components/renewals/calendar";
+} from "@server/infrastructure/db/repositories/renewals";
+import { RenewalCalendar } from "@ui/features/renewals/calendar";
 
 export const dynamic = "force-dynamic";
 

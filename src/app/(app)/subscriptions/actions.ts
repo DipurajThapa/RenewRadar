@@ -2,22 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { ForbiddenError, requireRole } from "@/lib/auth/rbac";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import {
   createSubscriptionSchema,
   dollarsToCents,
   updateSubscriptionSchema,
-} from "@/lib/validation/subscription";
+} from "@shared/validation/subscription";
 import {
   createSubscriptionWithRenewalEvent,
   ensureVendor,
   softDeleteSubscription,
   updateSubscription,
-} from "@/lib/db/mutations/subscriptions";
-import { countActiveSubscriptions } from "@/lib/db/queries/subscriptions";
-import { userBelongsToAccount } from "@/lib/db/queries/users";
-import { PLAN_LIMITS } from "@/lib/billing/plans";
+} from "@server/application/subscriptions";
+import { countActiveSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
+import { userBelongsToAccount } from "@server/infrastructure/db/repositories/users";
+import { PLAN_LIMITS } from "@server/infrastructure/billing/plans";
 
 export type ActionResult =
   | { ok: true; subscriptionId: string }

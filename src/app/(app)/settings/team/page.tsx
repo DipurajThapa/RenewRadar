@@ -1,10 +1,10 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { hasRole } from "@/lib/auth/rbac";
-import { listAccountUsers } from "@/lib/db/queries/users";
-import { listPendingInvitations } from "@/lib/db/queries/invitations";
-import { TeamMembersList } from "@/components/settings/team-members-list";
-import { InviteMemberForm } from "@/components/settings/invite-member-form";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { hasRole } from "@server/middleware/rbac";
+import { listAccountUsers } from "@server/infrastructure/db/repositories/users";
+import { listPendingInvitations } from "@server/infrastructure/db/repositories/invitations";
+import { TeamMembersList } from "@ui/features/settings/team-members-list";
+import { InviteMemberForm } from "@ui/features/settings/invite-member-form";
 
 export const dynamic = "force-dynamic";
 

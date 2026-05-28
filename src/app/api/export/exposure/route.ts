@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { listExposureDetail } from "@/lib/db/queries/reports";
-import { formatCurrencyCsv } from "@/lib/csv/format-helpers";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { listExposureDetail } from "@server/infrastructure/db/repositories/reports";
+import { formatCurrencyCsv } from "@server/infrastructure/csv/format-helpers";
 
 export const dynamic = "force-dynamic";
 

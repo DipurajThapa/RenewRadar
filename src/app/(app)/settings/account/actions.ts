@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { accountsTable } from "@/lib/db/schema";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { updateAccountSchema } from "@/lib/validation/account";
-import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit/write";
-import { ForbiddenError, requireRole } from "@/lib/auth/rbac";
+import { db } from "@server/infrastructure/db/client";
+import { accountsTable } from "@server/infrastructure/db/schema";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { updateAccountSchema } from "@shared/validation/account";
+import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import { z } from "zod";
 
 export type UpdateAccountResult =

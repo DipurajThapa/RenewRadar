@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { listSubscriptions } from "@/lib/db/queries/subscriptions";
-import { listAccountUsers } from "@/lib/db/queries/users";
-import { PLAN_LIMITS } from "@/lib/billing/plans";
-import { SubscriptionsTable } from "@/components/subscriptions/subscriptions-table";
-import { SubscriptionsEmptyState } from "@/components/subscriptions/empty-state";
-import { AddSubscriptionButton } from "@/components/subscriptions/add-subscription-button";
-import { OwnerFilter } from "@/components/subscriptions/owner-filter";
-import { ImportCsvButton } from "@/components/subscriptions/import-csv-button";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { listSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
+import { listAccountUsers } from "@server/infrastructure/db/repositories/users";
+import { PLAN_LIMITS } from "@server/infrastructure/billing/plans";
+import { SubscriptionsTable } from "@ui/features/subscriptions/subscriptions-table";
+import { SubscriptionsEmptyState } from "@ui/features/subscriptions/empty-state";
+import { AddSubscriptionButton } from "@ui/features/subscriptions/add-subscription-button";
+import { OwnerFilter } from "@ui/features/subscriptions/owner-filter";
+import { ImportCsvButton } from "@ui/features/subscriptions/import-csv-button";
 
 export const dynamic = "force-dynamic";
 

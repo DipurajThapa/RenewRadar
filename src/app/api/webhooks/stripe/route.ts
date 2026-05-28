@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
-import { stripe } from "@/lib/billing/stripe";
-import { processStripeWebhook } from "@/lib/billing/webhook";
+import { stripe } from "@server/infrastructure/billing/stripe-client";
+import { processStripeWebhook } from "@server/infrastructure/billing/webhook";
 
 // Stripe signature verification needs the raw request body, so this route
 // must run on the Node runtime and we must read with `req.text()`.

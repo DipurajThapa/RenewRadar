@@ -1,16 +1,16 @@
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { PortalButton } from "@/components/settings/portal-button";
-import { PlanCard } from "@/components/settings/plan-card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { Badge } from "@ui/components/primitives/badge";
+import { PortalButton } from "@ui/features/settings/portal-button";
+import { PlanCard } from "@ui/features/settings/plan-card";
 import {
   TIER_DEFINITIONS,
   UPGRADE_TIERS_IN_ORDER,
   maxSubscriptionsDisplay,
   maxUsersDisplay,
   tierBadgeLabel,
-} from "@/lib/billing/tier-definitions";
-import { formatDate } from "@/lib/utils";
+} from "@server/domain/billing/tier-definitions";
+import { formatDate } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
 

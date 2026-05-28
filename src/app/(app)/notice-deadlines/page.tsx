@@ -1,13 +1,13 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { Card, CardContent } from "@ui/components/primitives/card";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   getNoticeDeadlineKpis,
   listNoticeDeadlines,
-} from "@/lib/db/queries/notice-deadlines";
-import { NoticeDeadlineKpiStrip } from "@/components/notice-deadlines/kpi-strip";
-import { NoticeDeadlineFilters } from "@/components/notice-deadlines/filters";
-import { parseRange, parseStatus } from "@/lib/notice-deadline/parse";
-import { NoticeDeadlineCalendar } from "@/components/notice-deadlines/calendar";
+} from "@server/infrastructure/db/repositories/notice-deadlines";
+import { NoticeDeadlineKpiStrip } from "@ui/features/notice-deadlines/kpi-strip";
+import { NoticeDeadlineFilters } from "@ui/features/notice-deadlines/filters";
+import { parseRange, parseStatus } from "@server/domain/notice-deadline/parse";
+import { NoticeDeadlineCalendar } from "@ui/features/notice-deadlines/calendar";
 
 export const dynamic = "force-dynamic";
 

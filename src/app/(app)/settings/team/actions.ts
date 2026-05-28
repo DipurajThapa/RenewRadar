@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { ForbiddenError, requireRole } from "@/lib/auth/rbac";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import {
   createInvitation,
   revokeInvitation,
-} from "@/lib/db/mutations/invitations";
-import { sendEmail } from "@/lib/email/send";
-import { renderInvitationEmail } from "@/emails/invitation";
+} from "@server/application/invitations";
+import { sendEmail } from "@server/infrastructure/email/client";
+import { renderInvitationEmail } from "@server/infrastructure/email/templates/invitation";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://renewalradar.com";
 

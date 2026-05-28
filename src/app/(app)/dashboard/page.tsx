@@ -1,4 +1,4 @@
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   getActionBandCounts,
   getAnomalies,
@@ -6,17 +6,17 @@ import {
   getNoticeDeadlineSpotlight,
   getRecentActivity,
   getRenewalCalendarSnapshot,
-} from "@/lib/db/queries/dashboard";
-import { DashboardGreeting } from "@/components/dashboard/greeting";
-import { ActionBand } from "@/components/dashboard/action-band";
-import { KpiStrip } from "@/components/dashboard/kpi-strip";
-import { NoticeDeadlineSpotlight } from "@/components/dashboard/notice-deadline-spotlight";
-import { RenewalCalendarSnapshot } from "@/components/dashboard/renewal-calendar-snapshot";
-import { Anomalies } from "@/components/dashboard/anomalies";
-import { RecentActivity } from "@/components/dashboard/recent-activity";
-import { FreeForeverNudge } from "@/components/dashboard/free-forever-nudge";
-import { EmptyDashboard } from "@/components/dashboard/empty-dashboard";
-import { CoachMarkSequence } from "@/components/onboarding/coach-mark";
+} from "@server/infrastructure/db/repositories/dashboard";
+import { DashboardGreeting } from "@ui/features/dashboard/greeting";
+import { ActionBand } from "@ui/features/dashboard/action-band";
+import { KpiStrip } from "@ui/features/dashboard/kpi-strip";
+import { NoticeDeadlineSpotlight } from "@ui/features/dashboard/notice-deadline-spotlight";
+import { RenewalCalendarSnapshot } from "@ui/features/dashboard/renewal-calendar-snapshot";
+import { Anomalies } from "@ui/features/dashboard/anomalies";
+import { RecentActivity } from "@ui/features/dashboard/recent-activity";
+import { FreeForeverNudge } from "@ui/features/dashboard/free-forever-nudge";
+import { EmptyDashboard } from "@ui/features/dashboard/empty-dashboard";
+import { CoachMarkSequence } from "@ui/features/onboarding/coach-mark";
 
 export const dynamic = "force-dynamic";
 

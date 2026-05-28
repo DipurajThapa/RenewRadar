@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
-import { getCurrentAccountAndUser } from "@/lib/auth/current-user";
-import { getSubscriptionDetail } from "@/lib/db/queries/subscriptions";
-import { SubscriptionDetail } from "@/components/subscriptions/subscription-detail";
+import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { getSubscriptionDetail } from "@server/infrastructure/db/repositories/subscriptions";
+import { SubscriptionDetail } from "@ui/features/subscriptions/subscription-detail";
 
 export const dynamic = "force-dynamic";
 
