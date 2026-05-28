@@ -8,7 +8,7 @@ import { useToast } from "@ui/hooks/use-toast";
 import {
   disableIcsExportAction,
   rotateIcsTokenAction,
-} from "@/app/(app)/settings/integrations/actions";
+} from "@app/(app)/settings/integrations/actions";
 
 export function IcsIntegrationCard({
   configured,

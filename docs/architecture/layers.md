@@ -14,10 +14,36 @@ The codebase is layered. Imports flow inward (toward domain), never outward.
 | **app routes (pages)** | ✅ | ✅ | ✅ | ✅ | — | — | — | — | ✅ | ✅ |
 | **app actions** | ✅ | ✅ | ✅ | ✅ | — | — | — | — | — | ✅ |
 | **api routes** | ✅ | ✅ | ✅ | ✅ | — | — | — | — | — | ✅ |
-| **ui** | — | — | — | — | — | — | — | — | ✅ | ✅ |
+| **ui** | ✅* | ✅** | ✅†‡ | — | — | — | — | — | ✅ | ✅ |
 | **shared** | — | — | — | — | — | — | — | — | — | ✅ |
 
 Read as: a file in the row's layer **may import from** the columns marked ✅. Anything blank is forbidden.
+
+The UI row has three pragmatic exceptions (marked with footnote symbols):
+
+- **\* `ui → @server/domain/*`** — Domain modules are pure: types, constants, and
+  side-effect-free helpers (`scoreRisk`, `calculateNoticeDeadline`, `annualizeCents`,
+  `TIER_DEFINITIONS`, etc.). They have no Node-only dependencies, so they're
+  bundle-safe in the browser. Importing them from UI is intentional.
+- **\*\* `ui → @server/application/*`** — only via `"use server"`-marked modules
+  (server actions). Next.js handles these as RPC: the client component invokes
+  them; the actual code runs server-side. The import does not pull server code
+  into the client bundle. Server actions co-located with their route in
+  `src/app/**/actions.ts` are the more common pattern; the modules under
+  `@server/infrastructure/billing/{checkout,portal}.ts` are also server actions
+  by virtue of their `"use server"` directive.
+- **† `ui → @server/infrastructure/db/{schema,repositories}`** — only as
+  `import type { ... }`. TypeScript erases type-only imports at build time,
+  so the row types from Drizzle don't reach the browser bundle. Runtime
+  imports from these modules are forbidden.
+- **‡ `ui → @server/middleware/demo-mode`** — the `isDemoMode` constant is
+  computed from `process.env`. In a server-component context (where `top-nav.tsx`
+  imports it) it evaluates correctly; in a client bundle `process.env.DEMO_MODE`
+  is undefined and the constant is `false`. The import is safe in either case.
+
+All other paths into `@server/*` from UI are forbidden because they would drag
+`postgres`, `node:crypto`, `resend`, or the Stripe SDK into the browser bundle.
+The bundler will error before it ships; the rule documents the intent.
 
 ## Why each rule
 

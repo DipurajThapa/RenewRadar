@@ -5,7 +5,7 @@ import { Lock } from "lucide-react";
 import { Button } from "@ui/components/primitives/button";
 import { Label } from "@ui/components/primitives/label";
 import { cn } from "@shared/utils";
-import { saveNotificationPrefsAction } from "@/app/(app)/settings/notifications/actions";
+import { saveNotificationPrefsAction } from "@app/(app)/settings/notifications/actions";
 
 type Prefs = Record<string, { email: boolean; in_app: boolean }>;
 

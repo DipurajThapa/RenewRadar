@@ -7,7 +7,7 @@ import { Check, X } from "lucide-react";
 import { Button } from "@ui/components/primitives/button";
 import { Badge } from "@ui/components/primitives/badge";
 import { useToast } from "@ui/hooks/use-toast";
-import { approveRenewalDecisionAction } from "@/app/(app)/approvals/actions";
+import { approveRenewalDecisionAction } from "@app/(app)/approvals/actions";
 import { formatCurrency, formatDate } from "@shared/utils";
 import type { PendingApprovalRow } from "@server/infrastructure/db/repositories/approvals";
 

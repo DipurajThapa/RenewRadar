@@ -17,7 +17,7 @@ import { useToast } from "@ui/hooks/use-toast";
 import {
   sendInvitationAction,
   type InviteResult,
-} from "@/app/(app)/settings/team/actions";
+} from "@app/(app)/settings/team/actions";
 
 const initial: InviteResult | undefined = undefined;
 

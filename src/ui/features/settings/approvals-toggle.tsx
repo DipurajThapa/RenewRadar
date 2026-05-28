@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@ui/components/primitives/button";
 import { useToast } from "@ui/hooks/use-toast";
-import { toggleApprovalsRequiredAction } from "@/app/(app)/settings/account/actions";
+import { toggleApprovalsRequiredAction } from "@app/(app)/settings/account/actions";
 
 /**
  * Per-account toggle for approvals-lite. Admin/owner only.

@@ -13,7 +13,7 @@ import { cn } from "@shared/utils";
 import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
-} from "@/app/(app)/notifications/actions";
+} from "@app/(app)/notifications/actions";
 import {
   notificationDestinationUrl,
   notificationTriggerLabel,

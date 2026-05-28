@@ -103,7 +103,7 @@ WHERE re.notice_deadline::date - CURRENT_DATE IN (30, 14, 7, 3, 1)
 
 ### "A customer says the cancellation letter is wrong"
 
-The letter generator is a pure function in `src/components/decide-now/cancellation-letter-draft.tsx`. If the customer says the format is off:
+The letter generator is a pure function in `src/ui/features/decide-now/cancellation-letter-draft.tsx`. If the customer says the format is off:
 
 1. Open the file, find `generateLetterBody`
 2. The template uses customer-supplied fields. If they typed the wrong values, the letter reflects that — not a bug

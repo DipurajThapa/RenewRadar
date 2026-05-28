@@ -6,12 +6,12 @@
  * duplicate tier data anywhere — extend the structures here instead.
  *
  * Consumers:
- *   - src/lib/billing/plans.ts            (back-compat PLAN_LIMITS export)
- *   - src/app/pricing/page.tsx            (full pricing page)
- *   - src/components/marketing/marketing-home.tsx (PricingTeaser)
- *   - src/app/(app)/settings/billing/page.tsx     (current-plan card + upgrade grid)
- *   - src/components/settings/plan-card.tsx       (upgrade flow trigger)
- *   - src/app/(app)/subscriptions/actions.ts      (Free Forever cap enforcement)
+ *   - src/server/infrastructure/billing/plans.ts        (back-compat PLAN_LIMITS export)
+ *   - src/app/(marketing)/pricing/page.tsx              (full pricing page)
+ *   - src/ui/features/marketing/marketing-home.tsx      (PricingTeaser)
+ *   - src/app/(app)/settings/billing/page.tsx           (current-plan card + upgrade grid)
+ *   - src/ui/features/settings/plan-card.tsx            (upgrade flow trigger)
+ *   - src/app/(app)/subscriptions/actions.ts            (Free Forever cap enforcement)
  */
 
 export type PlanTier =

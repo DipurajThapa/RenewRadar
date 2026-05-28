@@ -210,4 +210,4 @@ function AlreadyDecided({
   );
 }
 
-// annualizeCents moved to @/lib/billing/annualize
+// annualizeCents now lives in @server/domain/billing/annualize

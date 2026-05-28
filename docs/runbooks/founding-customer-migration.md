@@ -151,10 +151,10 @@ For the personal Checkout link, use Stripe's "Payment Link" feature (Stripe Dash
 2. Customize success URL to `https://<your-domain>/settings/billing?upgrade=success`
 3. Share this link with each founding customer in their welcome email
 
-When the webhook fires for these customers, `planTierForPriceId` in `src/lib/billing/plans.ts` won't recognize the price ID. Add it to the map:
+When the webhook fires for these customers, `planTierForPriceId` in `src/server/infrastructure/billing/plans.ts` won't recognize the price ID. Add it to the map:
 
 ```typescript
-// src/lib/billing/plans.ts
+// src/server/infrastructure/billing/plans.ts
 const PRICE_TO_TIER: Partial<Record<string, PlanTier>> = {
   [process.env.STRIPE_STARTER_PRICE_ID ?? "starter-placeholder"]: "starter",
   [process.env.STRIPE_GROWTH_PRICE_ID ?? "growth-placeholder"]: "growth",

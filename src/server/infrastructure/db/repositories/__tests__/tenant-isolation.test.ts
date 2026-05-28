@@ -1,12 +1,14 @@
 /**
  * Tenant-isolation contract test.
  *
- * For every query and mutation exposed by `src/lib/db/`, this suite asserts:
+ * For every read repository and every write use case exposed by `@server/*`,
+ * this suite asserts:
  *   1. Scoping a call to Account A's ID NEVER returns or mutates Account B's data.
  *   2. Mutations called with the wrong account ID throw rather than silently no-op.
  *
- * If a new query module is added under `src/lib/db/queries/`, add a section
- * for it here. The `coverage` test at the bottom enforces that we don't forget.
+ * If a new repository module is added under
+ * `src/server/infrastructure/db/repositories/`, add a section here. The
+ * `coverage` test at the bottom enforces that we don't forget.
  */
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
 import { readdirSync } from "node:fs";

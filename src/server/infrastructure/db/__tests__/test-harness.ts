@@ -2,8 +2,9 @@
  * Shared test harness for DB-backed Vitest suites.
  *
  * Why this file exists:
- *   - `src/lib/db/index.ts` instantiates a singleton connection at import time.
- *     We import it here once so every query module shares the same client.
+ *   - `src/server/infrastructure/db/client.ts` instantiates a singleton
+ *     connection at import time. We import it here once so every repository
+ *     module shares the same client.
  *   - We run drizzle-kit migrations against the test DB at the start of the
  *     suite (idempotent), then truncate the data tables before each test so
  *     suites are order-independent.

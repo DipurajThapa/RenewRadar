@@ -24,9 +24,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // Path aliases mirror tsconfig.json. Keep "@" as the legacy alias so any
-      // straggler imports continue to resolve; new code uses the layered ones.
-      "@": srcUrl,
+      // Path aliases mirror tsconfig.json. The legacy "@" alias was retired
+      // after the SDLC layering refactor — every import now uses one of the
+      // layered aliases below.
       "@app": `${srcUrl}/app`,
       "@server": `${srcUrl}/server`,
       "@ui": `${srcUrl}/ui`,

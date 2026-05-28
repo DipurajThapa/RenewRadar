@@ -16,7 +16,7 @@ import {
   importSubscriptionsCsvAction,
   type ImportResult,
   type ImportRowResult,
-} from "@/app/(app)/subscriptions/import-actions";
+} from "@app/(app)/subscriptions/import-actions";
 import type { AccountUserOption } from "@server/infrastructure/db/repositories/users";
 
 type Props = {

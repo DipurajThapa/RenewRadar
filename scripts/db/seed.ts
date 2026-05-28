@@ -7,7 +7,8 @@
  * Safety: this DELETES all customer data. Never run in production.
  *
  * The account + user IDs are pinned to match DEMO_ACCOUNT_ID / DEMO_USER_ID
- * in src/lib/demo-mode.ts so the auth bypass returns the seeded row.
+ * in src/server/middleware/demo-mode.ts so the auth bypass returns the
+ * seeded row.
  */
 
 import { db } from "../../src/server/infrastructure/db/client";

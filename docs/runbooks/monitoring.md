@@ -185,7 +185,7 @@ ORDER BY total_exec_time DESC
 LIMIT 20;
 ```
 
-If you see a query with high mean time, check if it's missing an index. The schema in `src/lib/db/schema.ts` has indexes for the V1 hot paths; if you add new query patterns, add corresponding indexes.
+If you see a query with high mean time, check if it's missing an index. The schema in `src/server/infrastructure/db/schema.ts` has indexes for the V1 hot paths; if you add new query patterns, add corresponding indexes.
 
 ## Resend — email
 

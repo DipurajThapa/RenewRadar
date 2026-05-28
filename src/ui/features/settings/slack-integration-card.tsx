@@ -10,7 +10,7 @@ import { useToast } from "@ui/hooks/use-toast";
 import {
   disableSlackIntegrationAction,
   saveSlackIntegrationAction,
-} from "@/app/(app)/settings/integrations/actions";
+} from "@app/(app)/settings/integrations/actions";
 
 export function SlackIntegrationCard({
   configured,

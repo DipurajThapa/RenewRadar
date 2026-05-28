@@ -27,7 +27,7 @@ export type InviteResult =
  *
  * The invitee clicks the link, completes Clerk sign-up, and the Clerk webhook
  * notices the matching pending invitation and provisions them under the
- * inviting account (see src/lib/auth/provision.ts).
+ * inviting account (see src/server/application/auth/provision.ts).
  *
  * Allowed roles: admin, member, viewer. The "owner" role is reserved for the
  * original account creator — promote-to-owner is a separate explicit action.

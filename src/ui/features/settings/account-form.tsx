@@ -15,7 +15,7 @@ import {
 import {
   updateAccountAction,
   type UpdateAccountResult,
-} from "@/app/(app)/settings/account/actions";
+} from "@app/(app)/settings/account/actions";
 import { COMMON_TIMEZONES } from "@shared/validation/account";
 
 export function AccountForm({

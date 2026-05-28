@@ -5,8 +5,11 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {
+    // Enables src/instrumentation.ts (Next.js 14). Auto-on in 15+.
+    instrumentationHook: true,
     serverActions: {
-      bodySizeLimit: "5mb", // Allow CSV uploads in V1.5
+      // Headroom for CSV imports — the import dialog parses the blob server-side.
+      bodySizeLimit: "5mb",
     },
   },
   async headers() {

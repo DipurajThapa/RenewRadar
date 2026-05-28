@@ -11,6 +11,18 @@ All React code — both client components (`"use client"`) and server components
 | `hooks/` | Browser-only React hooks (currently just `use-toast`). |
 | `design-system/` | Design tokens, theme variables (placeholder today; expands when we ship a real design system). |
 
-`src/ui/**` is **not allowed** to import from `@server/*`. The TypeScript bundler will refuse it because server code imports browser-incompatible packages (`node:crypto`, `drizzle-orm`, `postgres`, etc.) — but the explicit boundary makes the rule auditable rather than accidental.
+`src/ui/**` is allowed to import from `@server/*` only along these specific paths (see [layers.md](../../docs/architecture/layers.md) for the full matrix):
 
-A page that needs server data and UI imports both: it's a server component that calls into `@server/...` for the data and renders `@ui/...` components with the result.
+- **`@server/domain/*`** — pure modules (no I/O), bundle-safe in either runtime.
+- **`@server/application/*` via `"use server"`** — server actions; Next.js handles them as RPC, no server code reaches the client bundle.
+- **`@server/infrastructure/db/{schema,repositories}` as `import type` only** —
+  TypeScript erases type-only imports; the bundle is clean.
+- **`@server/middleware/demo-mode`** — the `isDemoMode` constant only.
+
+All other paths into `@server/*` from UI are forbidden because they would drag
+`postgres`, `node:crypto`, `resend`, or the Stripe SDK into the browser bundle.
+The bundler will error before it ships; the rule documents the intent.
+
+A page that needs server data and UI imports both: it's a server component
+that calls into `@server/...` for the data and renders `@ui/...` components
+with the result.

@@ -19,7 +19,7 @@ import {
   createSubscriptionAction,
   updateSubscriptionAction,
   type ActionResult,
-} from "@/app/(app)/subscriptions/actions";
+} from "@app/(app)/subscriptions/actions";
 import type { Subscription } from "@server/infrastructure/db/schema";
 import type { AccountUserOption } from "@server/infrastructure/db/repositories/users";
 

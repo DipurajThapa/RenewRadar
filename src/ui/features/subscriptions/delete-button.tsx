@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@ui/components/primitives/dialog";
-import { deleteSubscriptionAction } from "@/app/(app)/subscriptions/actions";
+import { deleteSubscriptionAction } from "@app/(app)/subscriptions/actions";
 
 export function DeleteSubscriptionButton({
   subscriptionId,

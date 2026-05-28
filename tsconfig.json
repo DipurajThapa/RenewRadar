@@ -23,7 +23,6 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"],
       "@app/*": ["./src/app/*"],
       "@server/*": ["./src/server/*"],
       "@ui/*": ["./src/ui/*"],

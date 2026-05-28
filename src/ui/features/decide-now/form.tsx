@@ -14,7 +14,7 @@ import { Label } from "@ui/components/primitives/label";
 import {
   logRenewalDecisionAction,
   type DecisionType,
-} from "@/app/(app)/notice-deadlines/actions";
+} from "@app/(app)/notice-deadlines/actions";
 import { CancellationLetterDraft } from "./cancellation-letter-draft";
 import { cn } from "@shared/utils";
 

@@ -5,9 +5,9 @@
  * `renewal_event`, `account`, `user`, `vendor`, `invitation`, `savings_record`,
  * `integration`, AI-extracted-field applications) MUST call this from within
  * its transaction. Direct `tx.insert(auditLogTable)` calls are forbidden — the
- * coverage test (`src/lib/audit/__tests__/coverage.test.ts`) will fail the
- * build if a mutating actions file is added without going through this helper
- * or an audit-log-encapsulating mutation module.
+ * coverage test at `src/server/infrastructure/audit-log/__tests__/coverage.test.ts`
+ * fails the build if a mutating actions file is added without going through
+ * this helper or an audit-log-encapsulating application module.
  *
  * Design notes:
  *
