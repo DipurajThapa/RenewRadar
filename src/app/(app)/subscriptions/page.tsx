@@ -4,9 +4,12 @@ import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { listSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
 import { listAccountUsers } from "@server/infrastructure/db/repositories/users";
 import { PLAN_LIMITS } from "@server/infrastructure/billing/plans";
+import { Button } from "@ui/components/primitives/button";
+import { PageHeader } from "@ui/components/shared/page-header";
 import { SubscriptionsTable } from "@ui/features/subscriptions/subscriptions-table";
 import { SubscriptionsEmptyState } from "@ui/features/subscriptions/empty-state";
 import { AddSubscriptionButton } from "@ui/features/subscriptions/add-subscription-button";
+import { QuickAddDraftButton } from "@ui/features/subscriptions/quick-add-draft-button";
 import { OwnerFilter } from "@ui/features/subscriptions/owner-filter";
 import { ImportCsvButton } from "@ui/features/subscriptions/import-csv-button";
 
@@ -38,31 +41,32 @@ export default async function SubscriptionsPage({
     limit !== undefined && Number.isFinite(limit) ? ` of ${limit}` : "";
 
   return (
-    <div className="space-y-6 max-w-7xl">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Subscriptions</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {subscriptions.length} tracked{limitLabel}
-            {ownerFilter ? " (filtered)" : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {users.length > 1 && <OwnerFilter users={users} />}
-          {subscriptions.length > 0 && (
-            <Link
-              href="/api/export/subscriptions"
-              className="inline-flex items-center justify-center rounded-md border bg-white px-3 py-2 text-sm hover:bg-muted/40"
-              prefetch={false}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Link>
-          )}
-          <ImportCsvButton users={users} currentUserId={user.id} />
-          <AddSubscriptionButton users={users} currentUserId={user.id} />
-        </div>
-      </header>
+    <div className="space-y-8">
+      <PageHeader>
+        <PageHeader.Row>
+          <div className="space-y-2 min-w-0">
+            <PageHeader.Title>Subscriptions</PageHeader.Title>
+            <PageHeader.Description>
+              {subscriptions.length} tracked{limitLabel}
+              {ownerFilter ? " · filtered by owner" : ""}
+            </PageHeader.Description>
+          </div>
+          <PageHeader.Actions>
+            {users.length > 1 && <OwnerFilter users={users} />}
+            {subscriptions.length > 0 && (
+              <Button asChild variant="outline" size="default">
+                <Link href="/api/export/subscriptions" prefetch={false}>
+                  <Download />
+                  Export CSV
+                </Link>
+              </Button>
+            )}
+            <ImportCsvButton users={users} currentUserId={user.id} />
+            <QuickAddDraftButton />
+            <AddSubscriptionButton users={users} currentUserId={user.id} />
+          </PageHeader.Actions>
+        </PageHeader.Row>
+      </PageHeader>
 
       {subscriptions.length === 0 ? (
         <SubscriptionsEmptyState />

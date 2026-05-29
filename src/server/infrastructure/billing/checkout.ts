@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import { accountsTable } from "@server/infrastructure/db/schema";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import { stripe } from "@server/infrastructure/billing/stripe-client";
 import { priceIdForTier, type PlanTier } from "@server/infrastructure/billing/plans";
 
@@ -23,6 +24,15 @@ export async function createCheckoutSession(input: {
   tier: PlanTier;
 }): Promise<CheckoutResult> {
   const { account, user } = await getCurrentAccountAndUser();
+
+  // Initiating checkout commits the account to recurring billing — gate to
+  // admin+ so a viewer/member can't sign their company up for $899/mo Pro.
+  try {
+    requireRole(user, "admin");
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    throw err;
+  }
 
   // Can't checkout into Free Forever or Enterprise from this flow.
   if (input.tier === "free_forever" || input.tier === "enterprise") {

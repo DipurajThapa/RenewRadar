@@ -1,24 +1,29 @@
-import { headers } from "next/headers";
 import { Webhook } from "svix";
 import type { WebhookEvent } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { provisionNewUser } from "@server/application/auth/provision";
+import { SeatLimitExceededError } from "@server/application/invitations";
+import { archiveUser } from "@server/application/users/archive";
 import { db } from "@server/infrastructure/db/client";
 import { usersTable } from "@server/infrastructure/db/schema";
+import { createLogger } from "@server/infrastructure/observability/logger";
 
 export const runtime = "nodejs";
+
+const log = createLogger({ component: "webhooks.clerk" });
 
 export async function POST(req: Request) {
   const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("CLERK_WEBHOOK_SECRET is not set");
+    log.error("clerk_webhook_secret_unset");
     return new Response("Server misconfigured", { status: 500 });
   }
 
-  const headerPayload = await headers();
-  const svixId = headerPayload.get("svix-id");
-  const svixTimestamp = headerPayload.get("svix-timestamp");
-  const svixSignature = headerPayload.get("svix-signature");
+  // Read headers from the Request directly so the route is unit-testable
+  // with a synthetic Request (next/headers needs an active request scope).
+  const svixId = req.headers.get("svix-id");
+  const svixTimestamp = req.headers.get("svix-timestamp");
+  const svixSignature = req.headers.get("svix-signature");
 
   if (!svixId || !svixTimestamp || !svixSignature) {
     return new Response("Missing svix headers", { status: 400 });
@@ -35,7 +40,7 @@ export async function POST(req: Request) {
       "svix-signature": svixSignature,
     }) as WebhookEvent;
   } catch (err) {
-    console.error("Clerk webhook signature verification failed", err);
+    log.error("clerk_signature_verification_failed", err, { svixId });
     return new Response("Invalid signature", { status: 401 });
   }
 
@@ -90,20 +95,52 @@ export async function POST(req: Request) {
       }
 
       case "user.deleted": {
-        const userId = event.data.id;
-        if (!userId) break;
-        await db.delete(usersTable).where(eq(usersTable.clerkUserId, userId));
+        const clerkUserId = event.data.id;
+        if (!clerkUserId) break;
+        // P7.2 — never hard delete. Move the row to user_archive so
+        // historical audit-log FKs keep resolving and the data is
+        // available for re-signup detection / GDPR audit reconstruction.
+        // archiveUser is idempotent: re-deliveries from Clerk are safe.
+        const [existing] = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(eq(usersTable.clerkUserId, clerkUserId))
+          .limit(1);
+        if (existing) {
+          const result = await archiveUser({
+            userId: existing.id,
+            reason: "clerk_user_deleted",
+            archivedByUserId: null,
+          });
+          if (!result.ok) {
+            log.error("clerk_user_archive_failed", undefined, {
+              clerkUserId,
+              error: result.error,
+            });
+            return new Response(result.error, { status: 500 });
+          }
+          log.info("clerk_user_archived", { clerkUserId, userId: existing.id });
+        } else {
+          log.info("clerk_user_deleted_not_in_db", { clerkUserId });
+        }
         break;
       }
 
       default:
-        // Events we don't handle yet
-        console.log(`Unhandled Clerk event type: ${event.type}`);
+        log.info("clerk_event_unhandled", { type: event.type });
     }
 
     return new Response("OK", { status: 200 });
   } catch (err) {
-    console.error("Clerk webhook handler error:", err);
+    // Seat-cap denial is not a transient error — return 422 so Clerk doesn't
+    // retry. The user's Clerk account exists but no DB row was created; they
+    // will hit /setup-pending indefinitely. The /invitations/[token] page
+    // pre-checks the cap to make this race vanishingly rare in normal flow.
+    if (err instanceof SeatLimitExceededError) {
+      log.warn("clerk_provision_seat_cap_exceeded", { message: err.message });
+      return new Response(err.message, { status: 422 });
+    }
+    log.error("clerk_handler_failed", err, { eventType: event.type });
     return new Response("Processing error", { status: 500 });
   }
 }

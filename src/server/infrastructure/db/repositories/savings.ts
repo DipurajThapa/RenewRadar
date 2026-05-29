@@ -1,7 +1,7 @@
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
-  renewalEventsTable,
+  decisionContextsTable,
   savingsRecordsTable,
   subscriptionsTable,
   vendorsTable,
@@ -13,6 +13,10 @@ export type SavingsRow = SavingsRecord & {
   productName: string;
   /** True if the row is older than 30 days OR explicitly locked. */
   isLocked: boolean;
+  /** Rationale codes pulled from the linked decision_context, if any. */
+  rationaleCodes: string[];
+  /** Negotiation lever from the linked decision_context, if any. */
+  negotiationLever: string | null;
 };
 
 const LOCK_AFTER_DAYS = 30;
@@ -37,6 +41,8 @@ export async function getSavingsForRenewalEvent(
       record: savingsRecordsTable,
       vendorName: vendorsTable.name,
       productName: subscriptionsTable.productName,
+      rationaleCodesJson: decisionContextsTable.rationaleCodesJson,
+      negotiationLever: decisionContextsTable.negotiationLever,
     })
     .from(savingsRecordsTable)
     .innerJoin(
@@ -44,6 +50,13 @@ export async function getSavingsForRenewalEvent(
       eq(savingsRecordsTable.subscriptionId, subscriptionsTable.id)
     )
     .innerJoin(vendorsTable, eq(subscriptionsTable.vendorId, vendorsTable.id))
+    .leftJoin(
+      decisionContextsTable,
+      eq(
+        decisionContextsTable.renewalEventId,
+        savingsRecordsTable.renewalEventId
+      )
+    )
     .where(
       and(
         eq(savingsRecordsTable.accountId, accountId),
@@ -58,6 +71,11 @@ export async function getSavingsForRenewalEvent(
     vendorName: row.vendorName,
     productName: row.productName,
     isLocked: deriveIsLocked(row.record),
+    rationaleCodes: parseRationaleCodes(row.rationaleCodesJson),
+    negotiationLever:
+      row.negotiationLever && row.negotiationLever !== "none"
+        ? row.negotiationLever
+        : null,
   };
 }
 
@@ -75,6 +93,8 @@ export async function listSavingsForAccount(
       record: savingsRecordsTable,
       vendorName: vendorsTable.name,
       productName: subscriptionsTable.productName,
+      rationaleCodesJson: decisionContextsTable.rationaleCodesJson,
+      negotiationLever: decisionContextsTable.negotiationLever,
     })
     .from(savingsRecordsTable)
     .innerJoin(
@@ -82,6 +102,14 @@ export async function listSavingsForAccount(
       eq(savingsRecordsTable.subscriptionId, subscriptionsTable.id)
     )
     .innerJoin(vendorsTable, eq(subscriptionsTable.vendorId, vendorsTable.id))
+    // Left join so savings rows without a captured rationale still surface.
+    .leftJoin(
+      decisionContextsTable,
+      eq(
+        decisionContextsTable.renewalEventId,
+        savingsRecordsTable.renewalEventId
+      )
+    )
     .where(and(...conditions))
     .orderBy(desc(savingsRecordsTable.createdAt))
     .limit(options.limit ?? 200);
@@ -91,7 +119,23 @@ export async function listSavingsForAccount(
     vendorName: r.vendorName,
     productName: r.productName,
     isLocked: deriveIsLocked(r.record),
+    rationaleCodes: parseRationaleCodes(r.rationaleCodesJson),
+    negotiationLever:
+      r.negotiationLever && r.negotiationLever !== "none"
+        ? r.negotiationLever
+        : null,
   }));
+}
+
+/**
+ * Defensive parser for the jsonb rationale array. The column is `notNull`
+ * (defaulted to []), but the typed value reaches us as `unknown` — guard
+ * against null/non-array shapes so the reports page can't crash on a
+ * malformed row.
+ */
+function parseRationaleCodes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string");
 }
 
 export type SavingsTotals = {
@@ -168,6 +212,63 @@ export async function getSavingsByMonth(
     .orderBy(asc(sql`to_char(${savingsRecordsTable.createdAt}, 'YYYY-MM')`));
 }
 
-// renewalEventsTable export referenced for the inline join in
-// other modules — re-exported here for callers that import this file.
-void renewalEventsTable;
+/**
+ * CRON-ONLY cross-account read (A2): savings records whose realization date has
+ * passed and that haven't been reconciled yet. Each row is re-scoped by its own
+ * accountId in the reconcile use case. Returns ids only — the use case loads the
+ * full row inside its own account scope.
+ */
+export async function listSavingsRecordsDueForReconciliation(
+  now: Date
+): Promise<Array<{ id: string; accountId: string }>> {
+  return db
+    .select({
+      id: savingsRecordsTable.id,
+      accountId: savingsRecordsTable.accountId,
+    })
+    .from(savingsRecordsTable)
+    .where(
+      and(
+        lte(savingsRecordsTable.expectedSavingsRealizedAt, now),
+        isNull(savingsRecordsTable.reconciledAt)
+      )
+    );
+}
+
+export type RealizedSavingsTotals = {
+  projectedSavedAnnualUsdCents: number;
+  realizedSavedAnnualUsdCents: number;
+  reconciledCount: number;
+  realizedCount: number;
+  varianceCount: number;
+  awaitingCount: number;
+};
+
+/**
+ * Account-scoped roll-up for the reports "Realized vs projected" card: total
+ * projected savings, total PROVEN (reconciled) savings, and counts by status.
+ */
+export async function getRealizedSavingsTotals(
+  accountId: string
+): Promise<RealizedSavingsTotals> {
+  const [row] = await db
+    .select({
+      projected: sql<number>`coalesce(sum(${savingsRecordsTable.savedAnnualUsdCents}), 0)::int`,
+      realized: sql<number>`coalesce(sum(${savingsRecordsTable.realizedSavedAnnualUsdCents}), 0)::int`,
+      reconciledCount: sql<number>`count(*) filter (where ${savingsRecordsTable.reconciledAt} is not null)::int`,
+      realizedCount: sql<number>`count(*) filter (where ${savingsRecordsTable.reconciliationStatus} = 'realized')::int`,
+      varianceCount: sql<number>`count(*) filter (where ${savingsRecordsTable.reconciliationStatus} = 'variance')::int`,
+      awaitingCount: sql<number>`count(*) filter (where ${savingsRecordsTable.reconciledAt} is null)::int`,
+    })
+    .from(savingsRecordsTable)
+    .where(eq(savingsRecordsTable.accountId, accountId));
+  return {
+    projectedSavedAnnualUsdCents: row?.projected ?? 0,
+    realizedSavedAnnualUsdCents: row?.realized ?? 0,
+    reconciledCount: row?.reconciledCount ?? 0,
+    realizedCount: row?.realizedCount ?? 0,
+    varianceCount: row?.varianceCount ?? 0,
+    awaitingCount: row?.awaitingCount ?? 0,
+  };
+}
+

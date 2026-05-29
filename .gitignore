@@ -9,6 +9,9 @@
 
 # next.js
 /.next/
+# Production build output — written by `pnpm build`, kept separate from
+# `.next/` so it can never clobber the dev server's chunks.
+/.next-build/
 /out/
 
 # production

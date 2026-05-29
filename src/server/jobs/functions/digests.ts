@@ -86,6 +86,21 @@ export const weeklyDigest = inngest.createFunction(
       const decisionsThisWeek = weekSavings[0]?.count ?? 0;
       const savedThisWeek = weekSavings[0]?.saved ?? 0;
 
+      // Cumulative all-time savings — drives the ROI hero at the top of the
+      // digest. Same shape as the dashboard KPI's `savedAllTimeAnnualUsdCents`
+      // so the email and the in-app number agree.
+      const allTimeSavings = await step.run(
+        `all-time-savings-${account.id}`,
+        async () =>
+          db
+            .select({
+              saved: sql<number>`coalesce(sum(${savingsRecordsTable.savedAnnualUsdCents}), 0)::bigint`,
+            })
+            .from(savingsRecordsTable)
+            .where(eq(savingsRecordsTable.accountId, account.id))
+      );
+      const savedAllTime = Number(allTimeSavings[0]?.saved ?? 0);
+
       for (const user of users) {
         const pref = resolveChannelPreference(
           user.notificationPrefs,
@@ -113,6 +128,7 @@ export const weeklyDigest = inngest.createFunction(
               })),
               decisionsThisWeek,
               savedThisWeekUsdCents: savedThisWeek,
+              savedAllTimeUsdCents: savedAllTime,
             })
         );
 

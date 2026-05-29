@@ -47,6 +47,7 @@ export const AUDIT_ACTIONS = {
   // savings records
   savingsRecordCreated: "savings_record.created",
   savingsRecordUpdated: "savings_record.updated",
+  savingsRecordReconciled: "savings_record.reconciled",
   // approvals-lite
   renewalDecisionApproved: "renewal_decision.approved",
   renewalDecisionRejected: "renewal_decision.rejected",
@@ -72,6 +73,34 @@ export const AUDIT_ACTIONS = {
   extractedFieldEdited: "extracted_field.edited",
   extractedFieldRejected: "extracted_field.rejected",
   extractedFieldApplied: "extracted_field.applied",
+  // data export (GDPR-style account download)
+  accountDataExported: "account.data_exported",
+  // user lifecycle (P7.2 — archive replaces hard delete; restore brings back)
+  userArchived: "user.archived",
+  userRestored: "user.restored",
+  // staff support sessions (T4.1 — concierge onboarding)
+  supportSessionStarted: "support.session_started",
+  supportSessionEnded: "support.session_ended",
+  staffActedOnAccount: "support.staff_acted",
+  // public API (T4.6)
+  apiKeyCreated: "api_key.created",
+  apiKeyRevoked: "api_key.revoked",
+  apiRequest: "api.request",
+  // procurement intake (T4.11)
+  intakeRequestSubmitted: "intake_request.submitted",
+  intakeRequestApproved: "intake_request.approved",
+  intakeRequestDenied: "intake_request.denied",
+  intakeRequestDuplicate: "intake_request.duplicate",
+  intakeRequestWithdrawn: "intake_request.withdrawn",
+  // wedge PoC — spend ingestion + renewal reasoning
+  spendConnectionConfigured: "spend_connection.configured",
+  spendConnectionDisconnected: "spend_connection.disconnected",
+  recurringChargeConfirmed: "recurring_charge.confirmed",
+  recurringChargeDismissed: "recurring_charge.dismissed",
+  renewalBriefGenerated: "renewal_brief.generated",
+  // A3 — safe-agent internal renewal-notice draft
+  renewalNoticeDrafted: "renewal_notice.drafted",
+  renewalNoticeEdited: "renewal_notice.edited",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

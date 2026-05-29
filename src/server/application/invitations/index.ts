@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   invitationsTable,
@@ -7,8 +7,48 @@ import {
 } from "@server/infrastructure/db/schema";
 import type { Invitation, UserRole } from "@server/infrastructure/db/schema";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
+import {
+  TIER_DEFINITIONS,
+  type PlanTier,
+} from "@server/domain/billing/tier-definitions";
 
 const INVITATION_TTL_DAYS = 14;
+
+/**
+ * Thrown when adding a seat would exceed the account's plan tier limit.
+ * Carries the current usage + limit so the action can render a precise
+ * upgrade nudge ("3 of 3 seats used — upgrade to Growth for 10 seats").
+ */
+export class SeatLimitExceededError extends Error {
+  readonly currentUsers: number;
+  readonly pendingInvitations: number;
+  readonly maxUsers: number;
+  readonly currentTier: PlanTier;
+
+  constructor(args: {
+    currentUsers: number;
+    pendingInvitations: number;
+    maxUsers: number;
+    currentTier: PlanTier;
+  }) {
+    const total = args.currentUsers + args.pendingInvitations;
+    const tierLabel = TIER_DEFINITIONS[args.currentTier].label;
+    super(
+      `${tierLabel} includes ${args.maxUsers} ` +
+        `seat${args.maxUsers === 1 ? "" : "s"} — you've used ${total} ` +
+        `(${args.currentUsers} active${
+          args.pendingInvitations > 0
+            ? ` + ${args.pendingInvitations} pending invite${args.pendingInvitations === 1 ? "" : "s"}`
+            : ""
+        }). Upgrade to add more.`
+    );
+    this.name = "SeatLimitExceededError";
+    this.currentUsers = args.currentUsers;
+    this.pendingInvitations = args.pendingInvitations;
+    this.maxUsers = args.maxUsers;
+    this.currentTier = args.currentTier;
+  }
+}
 
 /**
  * Create or replace an invitation for an email address.
@@ -22,6 +62,12 @@ export async function createInvitation(input: {
   actorUserId: string;
   email: string;
   role: UserRole;
+  /**
+   * Account's current plan tier — used for seat-cap enforcement. Required
+   * so the gate runs inside the same transaction as the insert; pass it
+   * from the caller (settings/team action) which already loads the account.
+   */
+  accountPlanTier: PlanTier;
 }): Promise<Invitation> {
   const normalizedEmail = input.email.trim().toLowerCase();
   if (!normalizedEmail) throw new Error("Email is required");
@@ -40,6 +86,58 @@ export async function createInvitation(input: {
       .limit(1);
     if (existingUser) {
       throw new Error("That email already belongs to a member of this account");
+    }
+
+    // Seat-cap gate. We count (active users + pending invites) inside the
+    // same transaction so two parallel invitations can't both pass at the
+    // boundary. Re-inviting an email with a still-pending invitation is a
+    // no-net-new-seat case — detected and excluded via the same-email match
+    // a few lines down before we re-bump the count.
+    const maxUsers = TIER_DEFINITIONS[input.accountPlanTier].limits.maxUsers;
+    if (Number.isFinite(maxUsers)) {
+      const [activeRow] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(usersTable)
+        .where(eq(usersTable.accountId, input.accountId));
+      const activeUsers = activeRow?.count ?? 0;
+
+      const [pendingRow] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(invitationsTable)
+        .where(
+          and(
+            eq(invitationsTable.accountId, input.accountId),
+            isNull(invitationsTable.acceptedAt),
+            gt(invitationsTable.expiresAt, new Date())
+          )
+        );
+      const pendingInvites = pendingRow?.count ?? 0;
+
+      // Re-invites to an email that already has a pending invitation don't
+      // grow the seat count — they only rotate the token. Detect that and
+      // subtract from the pending count so re-invite is always allowed.
+      const [duplicatePending] = await tx
+        .select({ id: invitationsTable.id })
+        .from(invitationsTable)
+        .where(
+          and(
+            eq(invitationsTable.accountId, input.accountId),
+            eq(invitationsTable.email, normalizedEmail),
+            isNull(invitationsTable.acceptedAt),
+            gt(invitationsTable.expiresAt, new Date())
+          )
+        )
+        .limit(1);
+      const netNewSeats = duplicatePending ? 0 : 1;
+
+      if (activeUsers + pendingInvites + netNewSeats > maxUsers) {
+        throw new SeatLimitExceededError({
+          currentUsers: activeUsers,
+          pendingInvitations: pendingInvites,
+          maxUsers,
+          currentTier: input.accountPlanTier,
+        });
+      }
     }
 
     const token = randomBytes(32).toString("hex");

@@ -1,11 +1,28 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { MarketingNav } from "@ui/features/marketing/marketing-nav";
-import { MarketingFooter } from "@ui/features/marketing/marketing-footer";
+import { HeroBanner } from "@ui/components/shared/hero-banner";
+import {
+  ArticleJsonLd,
+  BreadcrumbJsonLd,
+} from "@ui/components/seo/structured-data";
 
-export const metadata = {
-  title: "Data Processing Addendum — Renewal Radar",
+// EEAT freshness markers — see security/page.tsx for the rationale.
+const PUBLISHED = "2026-05-01";
+const LAST_REVIEWED = "2026-05-28";
+
+export const metadata: Metadata = {
+  // Title template in the root layout appends " · Renewal Radar".
+  title: "Data Processing Addendum",
   description:
-    "Standard Data Processing Addendum for Renewal Radar customers. Available to Pro and Enterprise customers as part of the contract.",
+    "Standard Data Processing Addendum for Renewal Radar customers. GDPR / UK GDPR processor terms, SCCs, subprocessor commitments, and breach notification windows.",
+  alternates: { canonical: "/legal/dpa" },
+  openGraph: {
+    title: "Data Processing Addendum — Renewal Radar",
+    description:
+      "Reference DPA text for Renewal Radar Pro and Enterprise customers.",
+    url: "/legal/dpa",
+    type: "article",
+  },
 };
 
 /**
@@ -19,38 +36,42 @@ export const metadata = {
 export default function DpaPage() {
   return (
     <>
-      <MarketingNav />
-      <main className="max-w-4xl mx-auto px-6 py-12">
-        <header className="mb-10">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">
-            Legal
-          </p>
-          <h1 className="text-3xl font-bold mt-2">
-            Data Processing Addendum
-          </h1>
-          <p className="text-sm text-muted-foreground mt-3 max-w-2xl">
-            This Data Processing Addendum ("DPA") supplements the Renewal
-            Radar Master Service Agreement and applies whenever we process
-            Personal Data on behalf of a Customer.
-          </p>
-          <div className="text-xs text-muted-foreground mt-4 space-y-1">
-            <div>Version: 2026-05-A</div>
-            <div>Effective: 2026-05-28</div>
+      <HeroBanner
+        eyebrow="Legal · DPA"
+        title="Data Processing Addendum"
+        description="This DPA supplements the Renewal Radar Master Service Agreement and applies whenever we process Personal Data on behalf of a Customer."
+        compact
+        metaBelow={
+          <div className="space-y-1">
+            <div>
+              <span className="font-medium text-foreground">Version</span>{" "}
+              2026-05-A · <span className="font-medium text-foreground">Effective</span>{" "}
+              <time dateTime={LAST_REVIEWED}>{LAST_REVIEWED}</time> ·{" "}
+              <span className="font-medium text-foreground">Reviewed</span>{" "}
+              by counsel
+            </div>
+            <div className="text-xs italic">
+              ⚠ Reference template — not legal advice. The authoritative
+              document is the version-stamped PDF signed by both parties.
+            </div>
           </div>
-
-          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <strong className="block uppercase text-xs tracking-wide">
-              ⚠ Reference template — not legal advice
-            </strong>
-            <p className="mt-1">
-              This page is the canonical text we offer to Pro and Enterprise
-              customers. It is a starting point, not a substitute for review
-              by your own counsel. The authoritative document for any signed
-              engagement is the version-stamped PDF you receive from your
-              account contact, signed by both parties.
-            </p>
-          </div>
-        </header>
+        }
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", href: "/" },
+          { name: "Legal", href: "/legal/dpa" },
+          { name: "DPA", href: "/legal/dpa" },
+        ]}
+      />
+      <ArticleJsonLd
+        headline="Data Processing Addendum (DPA)"
+        description="Standard DPA for Renewal Radar customers — GDPR / UK GDPR processor terms, SCCs, subprocessor commitments, breach notification windows."
+        datePublished={PUBLISHED}
+        dateModified={LAST_REVIEWED}
+        url="/legal/dpa"
+      />
+      <main className="max-w-4xl mx-auto px-5 lg:px-8 pb-20">
 
         <article className="prose prose-sm max-w-none space-y-8">
           <section>
@@ -314,7 +335,6 @@ export default function DpaPage() {
           </section>
         </article>
       </main>
-      <MarketingFooter />
     </>
   );
 }

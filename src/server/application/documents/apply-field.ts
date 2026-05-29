@@ -23,7 +23,6 @@ import {
   aiExtractedFieldsTable,
   renewalEventsTable,
   subscriptionsTable,
-  vendorsTable,
 } from "@server/infrastructure/db/schema";
 import type { AiExtractedField } from "@server/infrastructure/db/schema";
 import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
@@ -31,6 +30,8 @@ import {
   AUDIT_ACTIONS,
   writeAuditLog,
 } from "@server/infrastructure/audit-log/writer";
+import { recordEvent } from "@server/infrastructure/analytics";
+import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
 
 export class ApplyFieldError extends Error {
   constructor(message: string) {
@@ -61,6 +62,13 @@ export async function applyExtractedField(input: {
       .limit(1);
     if (!field) return { ok: false, error: "Field not found" };
 
+    // Idempotency comes FIRST: a successful apply flips reviewStatus to
+    // "applied" + appliedAt to a date, so on a second call we'd otherwise
+    // fail the "must be accepted/edited" guard with a misleading error.
+    // The docstring promises idempotency; this ordering enforces it.
+    if (field.appliedAt) {
+      return { ok: true, appliedTo: "no-op (already applied)" };
+    }
     if (
       field.reviewStatus !== "accepted" &&
       field.reviewStatus !== "edited"
@@ -72,9 +80,6 @@ export async function applyExtractedField(input: {
     }
     if (!field.reviewedByUserId) {
       return { ok: false, error: "Field has no reviewer recorded" };
-    }
-    if (field.appliedAt) {
-      return { ok: true, appliedTo: "no-op (already applied)" };
     }
     if (!field.subscriptionId) {
       return {
@@ -193,13 +198,16 @@ export async function applyExtractedField(input: {
         const v = value as { clause?: string } | null;
         if (!v?.clause)
           return { ok: false, error: "No clause text to apply" };
-        const stamp = `[Price increase clause from contract] ${v.clause}`;
-        const newNotes = sub.notes ? `${sub.notes}\n\n${stamp}` : stamp;
-        beforeSnapshot = { notes: sub.notes };
-        afterSnapshot = { notes: newNotes };
+        // Promoted from notes blob to first-class column. The text is
+        // stored verbatim; UI can render it next to the renewal date so
+        // the operator sees exactly what the contract says.
+        beforeSnapshot = {
+          priceIncreaseClauseText: sub.priceIncreaseClauseText,
+        };
+        afterSnapshot = { priceIncreaseClauseText: v.clause };
         await tx
           .update(subscriptionsTable)
-          .set({ notes: newNotes })
+          .set({ priceIncreaseClauseText: v.clause })
           .where(eq(subscriptionsTable.id, sub.id));
         break;
       }
@@ -207,23 +215,18 @@ export async function applyExtractedField(input: {
         const v = value as { method?: string } | null;
         if (!v?.method)
           return { ok: false, error: "No cancellation method to apply" };
-        const [vendor] = await tx
-          .select()
-          .from(vendorsTable)
-          .where(eq(vendorsTable.id, sub.vendorId))
-          .limit(1);
-        if (!vendor) return { ok: false, error: "Vendor not found" };
-        const stamp = `Cancellation method per contract: ${v.method}`;
-        const newNotes = vendor.cancellationNotes
-          ? `${vendor.cancellationNotes}\n\n${stamp}`
-          : stamp;
-        beforeSnapshot = { cancellationNotes: vendor.cancellationNotes };
-        afterSnapshot = { cancellationNotes: newNotes };
+        // Promoted to first-class subscriptions.cancellationMethodCode.
+        // Storing on the subscription (not the vendor) reflects reality —
+        // different products from the same vendor sometimes have
+        // different cancellation paths.
+        beforeSnapshot = {
+          cancellationMethodCode: sub.cancellationMethodCode,
+        };
+        afterSnapshot = { cancellationMethodCode: v.method };
         await tx
-          .update(vendorsTable)
-          .set({ cancellationNotes: newNotes })
-          .where(eq(vendorsTable.id, vendor.id));
-        appliedTo = "vendor";
+          .update(subscriptionsTable)
+          .set({ cancellationMethodCode: v.method })
+          .where(eq(subscriptionsTable.id, sub.id));
         break;
       }
     }
@@ -246,6 +249,67 @@ export async function applyExtractedField(input: {
         appliedFromDocumentId: field.documentId,
       },
     });
+
+    // Vendor memory — record every AI-driven apply against the linked vendor.
+    // This is the moment a structured AI value committed to the source of
+    // truth, so the timeline can show it as a discrete event with full
+    // before/after diff.
+    await recordVendorEvent(tx, {
+      accountId: input.accountId,
+      vendorId: sub.vendorId,
+      subscriptionId: sub.id,
+      kind: "contract_field_applied",
+      payload: {
+        fieldKey: field.fieldKey,
+        beforeValueJson: beforeSnapshot,
+        afterValueJson: afterSnapshot,
+        documentId: field.documentId,
+        evidenceQuote: field.evidenceQuote,
+        evidencePageNumber: field.evidencePageNumber,
+        confidencePct: field.confidence,
+      },
+      actorUserId: input.actorUserId,
+      relatedEntityType: "ai_extracted_field",
+      relatedEntityId: field.id,
+    });
+
+    // Symmetry with `updateSubscription`: when the apply changes the contract
+    // value, the vendor timeline should reflect the price change as a
+    // first-class event. Without this, AI-driven price corrections don't show
+    // up in the "price stability" analysis on the vendor page.
+    if (field.fieldKey === "contract_value_cents") {
+      const beforeTotal = sub.totalCostPerPeriodCents;
+      const afterTotal =
+        (afterSnapshot.totalCostPerPeriodCents as number | undefined) ??
+        beforeTotal;
+      const beforeUnit = sub.unitPriceCents;
+      const afterUnit =
+        (afterSnapshot.unitPriceCents as number | undefined) ?? beforeUnit;
+      if (beforeTotal !== afterTotal) {
+        const deltaPct =
+          beforeTotal === 0
+            ? 0
+            : Math.round(
+                ((afterTotal - beforeTotal) / beforeTotal) * 10_000
+              ) / 100;
+        await recordVendorEvent(tx, {
+          accountId: input.accountId,
+          vendorId: sub.vendorId,
+          subscriptionId: sub.id,
+          kind: "price_changed",
+          payload: {
+            beforeUnitPriceCents: beforeUnit,
+            afterUnitPriceCents: afterUnit,
+            beforeTotalCostPerPeriodCents: beforeTotal,
+            afterTotalCostPerPeriodCents: afterTotal,
+            deltaPct,
+          },
+          actorUserId: input.actorUserId,
+          relatedEntityType: "ai_extracted_field",
+          relatedEntityId: field.id,
+        });
+      }
+    }
 
     return { ok: true as const, appliedTo };
   });
@@ -326,6 +390,25 @@ export async function reviewExtractedField(input: {
       after: {
         reviewStatus: input.decision,
         editedValueJson: input.editedValueJson,
+      },
+    });
+
+    // Activation funnel: accepting an extracted field is the moment the user
+    // proves the AI extraction is useful. We fire one event per decision —
+    // edits and rejections matter too because they tell us where the
+    // heuristic / future LLM extractor needs to improve.
+    void recordEvent({
+      event:
+        input.decision === "rejected"
+          ? "extracted_field.rejected"
+          : "extracted_field.accepted",
+      context: { accountId: input.accountId, userId: input.actorUserId },
+      properties: {
+        fieldId: existing.id,
+        fieldKey: existing.fieldKey,
+        decision: input.decision,
+        documentId: existing.documentId,
+        wasEdited: input.decision === "edited",
       },
     });
 

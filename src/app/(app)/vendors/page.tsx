@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Briefcase } from "lucide-react";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { listVendorsWithIntelligence } from "@server/infrastructure/db/repositories/vendor-memory";
-import { Card, CardContent } from "@ui/components/primitives/card";
+import { PageHeader } from "@ui/components/shared/page-header";
 import { EmptyState } from "@ui/components/shared/empty-state";
 import { formatCurrency, formatDate } from "@shared/utils";
 
@@ -13,14 +13,14 @@ export default async function VendorsPage() {
   const vendors = await listVendorsWithIntelligence(account.id);
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <header>
-        <h1 className="text-2xl font-semibold">Vendors</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <div className="space-y-8 max-w-6xl">
+      <PageHeader>
+        <PageHeader.Title>Vendors</PageHeader.Title>
+        <PageHeader.Description>
           Every vendor you track. Click into one for the full relationship
           timeline, decision history, and compliance status.
-        </p>
-      </header>
+        </PageHeader.Description>
+      </PageHeader>
 
       {vendors.length === 0 ? (
         <EmptyState

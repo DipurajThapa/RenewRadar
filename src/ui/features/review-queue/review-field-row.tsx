@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Check,
   Edit3,
+  ExternalLink,
   FileText,
   Quote,
   X,
@@ -140,12 +141,30 @@ export function ReviewFieldRow({ field }: { field: PendingReviewField }) {
           <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-amber-900">
             <Quote className="h-3 w-3" />
             Evidence
-            {field.evidencePageNumber !== null && (
-              <span className="ml-auto inline-flex items-center gap-1 text-amber-900">
-                <FileText className="h-3 w-3" />
-                Page {field.evidencePageNumber}
-              </span>
-            )}
+            <span className="ml-auto flex items-center gap-2">
+              {field.evidencePageNumber !== null && (
+                <span className="inline-flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  Page {field.evidencePageNumber}
+                </span>
+              )}
+              {/* Verify-quote affordance (P6.13). Opens the document in a
+                  new tab; most browsers honour the #page=N URL fragment to
+                  scroll directly to the quoted page. */}
+              <a
+                href={
+                  field.evidencePageNumber !== null
+                    ? `/api/documents/${field.documentId}/inline#page=${field.evidencePageNumber}`
+                    : `/api/documents/${field.documentId}/inline`
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-amber-900 hover:text-amber-700 underline-offset-2 hover:underline"
+              >
+                Open contract
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </span>
           </div>
           <p className="text-sm text-amber-950 italic mt-1 leading-relaxed">
             &ldquo;{field.evidenceQuote}&rdquo;

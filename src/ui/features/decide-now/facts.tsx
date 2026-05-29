@@ -15,7 +15,11 @@ export function DecideNowFacts({
         <CardTitle>What we know</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <dl className="grid grid-cols-2 gap-y-3 text-sm">
+        {/* `[max-content_1fr]` keeps the label column tight to its text on
+            every screen so wide values (cancellation email, etc.) stay on
+            one line. Falls back to fluid columns on very narrow phones via
+            the natural wrap behaviour of grid items. */}
+        <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-2 sm:gap-y-3 text-sm">
           <dt className="text-muted-foreground">Contracted seats</dt>
           <dd className="font-medium">{subscription.totalSeats}</dd>
 

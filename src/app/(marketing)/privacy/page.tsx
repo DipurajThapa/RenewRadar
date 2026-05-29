@@ -1,9 +1,26 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { HeroBanner } from "@ui/components/shared/hero-banner";
+import {
+  ArticleJsonLd,
+  BreadcrumbJsonLd,
+} from "@ui/components/seo/structured-data";
 
-export const metadata = {
-  title: "Privacy Policy — Renewal Radar",
+// EEAT freshness markers — bump LAST_REVIEWED on every meaningful edit.
+const PUBLISHED = "2026-05-01";
+const LAST_REVIEWED = "2026-05-28";
+
+export const metadata: Metadata = {
+  // Title template in the root layout appends " · Renewal Radar".
+  title: "Privacy policy",
   description:
-    "How Renewal Radar collects, uses, and protects your data.",
+    "How Renewal Radar collects, uses, and protects your data. Account information, contract content, audit-log metadata, and our subprocessor list — all explained plainly.",
+  alternates: { canonical: "/privacy" },
+  openGraph: {
+    title: "Privacy policy — Renewal Radar",
+    description: "Plain-language privacy policy.",
+    url: "/privacy",
+    type: "article",
+  },
 };
 
 // ⚠️ REVIEW BEFORE PUBLIC LAUNCH ⚠️
@@ -17,27 +34,42 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <main className="max-w-2xl mx-auto px-6 py-12 prose prose-sm prose-neutral">
-      <Link
-        href="/"
-        className="text-sm text-muted-foreground no-underline hover:underline"
-      >
-        ← Home
-      </Link>
+    <>
+      <HeroBanner
+        eyebrow="Legal · Privacy"
+        title="Privacy policy"
+        description="How Renewal Radar collects, uses, and protects your data. Plain language; sections are short."
+        compact
+        metaBelow={
+          <span>
+            <span className="font-medium text-foreground">Last reviewed</span>{" "}
+            <time dateTime={LAST_REVIEWED}>{LAST_REVIEWED}</time> · Published{" "}
+            <time dateTime={PUBLISHED}>{PUBLISHED}</time>
+          </span>
+        }
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", href: "/" },
+          { name: "Privacy", href: "/privacy" },
+        ]}
+      />
+      <ArticleJsonLd
+        headline="Renewal Radar privacy policy"
+        description="How Renewal Radar collects, uses, and protects customer data."
+        datePublished={PUBLISHED}
+        dateModified={LAST_REVIEWED}
+        url="/privacy"
+      />
+      <main className="max-w-2xl mx-auto px-5 lg:px-8 pb-20 prose prose-sm prose-neutral">
+        <p>
+          Renewal Radar provides SaaS subscription and renewal management
+          software (the "Service"). This Privacy Policy describes how we
+          collect, use, and protect information when you use the Service. By
+          using Renewal Radar, you agree to the practices described here.
+        </p>
 
-      <h1>Privacy Policy</h1>
-      <p>
-        <em>Effective: [REPLACE WITH LAUNCH DATE]</em>
-      </p>
-
-      <p>
-        Renewal Radar provides SaaS subscription and renewal management
-        software (the "Service"). This Privacy Policy describes how we collect,
-        use, and protect information when you use the Service. By using
-        Renewal Radar, you agree to the practices described here.
-      </p>
-
-      <h2>1. Information we collect</h2>
+        <h2>1. Information we collect</h2>
 
       <p>
         <strong>Account information.</strong> When you sign up, we collect
@@ -219,6 +251,7 @@ export default function PrivacyPage() {
         For everything else:{" "}
         <a href="mailto:hello@renewalradar.com">hello@renewalradar.com</a>
       </p>
-    </main>
+      </main>
+    </>
   );
 }

@@ -1,5 +1,9 @@
 /**
- * Anthropic Claude Sonnet 4.6 extraction provider — production scaffold.
+ * Anthropic Claude Sonnet 4.6 provider — production scaffold.
+ *
+ * Covers both the structured extraction interface AND the insight interface
+ * (risk explainer, vendor intelligence summary, decision recommendation,
+ * savings narrative).
  *
  * The real implementation:
  *   1. pnpm add @anthropic-ai/sdk
@@ -10,22 +14,32 @@
  *      this interface returns
  *   5. Set costUsdMicros from usage * model price
  *
- * The system prompt — pinned at promptVersion v1.0 — and the JSON schema
+ * The system prompts — pinned at promptVersion v1.0 — and the JSON schemas
  * are both kept here so prompt changes are reviewable in PR. When the SDK
  * lands, copy these strings into the real provider unchanged.
  *
  * Until then this stub throws on any call. The factory in `index.ts` only
- * instantiates it when AI_EXTRACTION_PROVIDER=anthropic.
+ * instantiates it when AI_EXTRACTION_PROVIDER=anthropic AND ANTHROPIC_API_KEY
+ * is set; otherwise the factory silently falls back to the heuristic stub.
  */
 import type {
+  AIInsightProvider,
+  DecisionRecommendationInput,
+  DecisionRecommendationOutput,
   ExtractionInput,
   ExtractionProvider,
   ExtractionResult,
+  RiskExplainerInput,
+  RiskExplainerOutput,
+  SavingsNarrativeInput,
+  SavingsNarrativeOutput,
+  VendorIntelligenceInput,
+  VendorIntelligenceOutput,
 } from "./types";
 
 /**
- * Pinned system prompt. Versioned. When you change it, bump PROMPT_VERSION
- * so historical runs can be reproduced or re-evaluated.
+ * Pinned system prompt for extraction. Versioned. When you change it, bump
+ * PROMPT_VERSION so historical runs can be reproduced or re-evaluated.
  */
 export const ANTHROPIC_SYSTEM_PROMPT = `You are extracting six structured fields from a SaaS contract.
 
@@ -49,23 +63,65 @@ Rules:
 
 Return JSON only. No prose.`;
 
+/**
+ * Pinned system prompt for the insight methods. Lower temperature, shorter
+ * output, no extraction-style evidence requirement.
+ */
+export const ANTHROPIC_INSIGHTS_SYSTEM_PROMPT = `You are explaining renewal-intelligence signals to a SaaS finance operator.
+
+Style:
+  - One headline (≤120 chars). Two- to three-sentence rationale. 1-3 next actions.
+  - Plain prose. No hedging. No "as an AI" boilerplate.
+  - Money formatted as $XK / $X.XM. No currency symbol other than $.
+  - Never invent facts. Synthesize ONLY from the structured input.
+
+You never recommend sending an email to a vendor on behalf of the user. Renewal
+Radar is an advisor product, not an agent.
+
+Return JSON only. No prose outside the JSON.`;
+
 export const PROMPT_VERSION = "v1.0";
 export const MODEL = "claude-sonnet-4-6";
 const PROVIDER_NAME = "anthropic";
 
-export class AnthropicNotConfiguredProvider implements ExtractionProvider {
+const NOT_CONFIGURED_MESSAGE =
+  "Anthropic provider is not configured. To enable:\n" +
+  "  1. pnpm add @anthropic-ai/sdk\n" +
+  "  2. Set ANTHROPIC_API_KEY in your env\n" +
+  "  3. Replace this class with a real Anthropic call using\n" +
+  `     ANTHROPIC_SYSTEM_PROMPT (PROMPT_VERSION=${PROMPT_VERSION}, MODEL=${MODEL}).\n` +
+  "Until then, leave AI_EXTRACTION_PROVIDER unset (defaults to heuristic-stub).";
+
+export class AnthropicNotConfiguredProvider
+  implements ExtractionProvider, AIInsightProvider
+{
   readonly providerName = PROVIDER_NAME;
   readonly model = MODEL;
   readonly promptVersion = PROMPT_VERSION;
 
   async extract(_input: ExtractionInput): Promise<ExtractionResult> {
-    throw new Error(
-      "Anthropic provider is not configured. To enable:\n" +
-        "  1. pnpm add @anthropic-ai/sdk\n" +
-        "  2. Set ANTHROPIC_API_KEY in your env\n" +
-        "  3. Replace this class with a real Anthropic call using\n" +
-        `     ANTHROPIC_SYSTEM_PROMPT (PROMPT_VERSION=${PROMPT_VERSION}, MODEL=${MODEL}).\n` +
-        "Until then, leave AI_EXTRACTION_PROVIDER unset (defaults to heuristic-stub)."
-    );
+    throw new Error(NOT_CONFIGURED_MESSAGE);
+  }
+
+  async explainRisk(_input: RiskExplainerInput): Promise<RiskExplainerOutput> {
+    throw new Error(NOT_CONFIGURED_MESSAGE);
+  }
+
+  async summarizeVendorIntelligence(
+    _input: VendorIntelligenceInput
+  ): Promise<VendorIntelligenceOutput> {
+    throw new Error(NOT_CONFIGURED_MESSAGE);
+  }
+
+  async recommendRenewalDecision(
+    _input: DecisionRecommendationInput
+  ): Promise<DecisionRecommendationOutput> {
+    throw new Error(NOT_CONFIGURED_MESSAGE);
+  }
+
+  async narrateSavings(
+    _input: SavingsNarrativeInput
+  ): Promise<SavingsNarrativeOutput> {
+    throw new Error(NOT_CONFIGURED_MESSAGE);
   }
 }

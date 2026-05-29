@@ -7,6 +7,7 @@ import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import {
   createInvitation,
   revokeInvitation,
+  SeatLimitExceededError,
 } from "@server/application/invitations";
 import { sendEmail } from "@server/infrastructure/email/client";
 import { renderInvitationEmail } from "@server/infrastructure/email/templates/invitation";
@@ -58,6 +59,7 @@ export async function sendInvitationAction(
       actorUserId: user.id,
       email: parsed.data.email,
       role: parsed.data.role,
+      accountPlanTier: account.planTier,
     });
 
     const acceptUrl = `${APP_URL}/invitations/${invitation.token}`;
@@ -91,6 +93,11 @@ export async function sendInvitationAction(
     revalidatePath("/settings/team");
     return { ok: true };
   } catch (err) {
+    // SeatLimitExceededError carries a precise upgrade-aware message — pass
+    // straight through. Generic errors get a sanitized fallback.
+    if (err instanceof SeatLimitExceededError) {
+      return { ok: false, formError: err.message };
+    }
     console.error("[sendInvitationAction] failed:", err);
     const msg = err instanceof Error ? err.message : "Couldn't send the invite.";
     return { ok: false, formError: msg };

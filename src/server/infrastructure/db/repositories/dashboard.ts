@@ -2,6 +2,7 @@ import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
+  savingsRecordsTable,
   subscriptionsTable,
   vendorsTable,
 } from "@server/infrastructure/db/schema";
@@ -141,6 +142,18 @@ export type DashboardKpis = {
   noticeDeadlinesNext30Count: number;
   noticeDeadlinesNext30ValueCents: number;
   totalAnnualSpendCents: number;
+  /**
+   * Total saved this calendar year. Sum of `savedAnnualUsdCents` across every
+   * savings record created in the current year. Includes both auto-generated
+   * rows (from logged decisions) and user-entered rows (renegotiated /
+   * avoided_increase).
+   */
+  savedYtdAnnualUsdCents: number;
+  /**
+   * Total saved across all time for this account. Used in the digest email
+   * to show cumulative value created.
+   */
+  savedAllTimeAnnualUsdCents: number;
 };
 
 export async function getDashboardKpis(
@@ -153,7 +166,17 @@ export async function getDashboardKpis(
   startOfMonth.setUTCDate(1);
   startOfMonth.setUTCHours(0, 0, 0, 0);
 
-  const [tracked, addedThisMonth, deadlines, totalSpend] = await Promise.all([
+  // Start of the current calendar year for "saved YTD".
+  const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+
+  const [
+    tracked,
+    addedThisMonth,
+    deadlines,
+    totalSpend,
+    savedYtd,
+    savedAllTime,
+  ] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(subscriptionsTable)
@@ -203,6 +226,30 @@ export async function getDashboardKpis(
           eq(subscriptionsTable.status, "active")
         )
       ),
+
+    // Saved YTD — sum every savings_record this account created since Jan 1
+    // of the current year. Locked rows count just the same as unlocked: the
+    // user signaled the saving is real either way.
+    db
+      .select({
+        savedCents: sql<number>`coalesce(sum(${savingsRecordsTable.savedAnnualUsdCents}), 0)::bigint`,
+      })
+      .from(savingsRecordsTable)
+      .where(
+        and(
+          eq(savingsRecordsTable.accountId, accountId),
+          gte(savingsRecordsTable.createdAt, startOfYear)
+        )
+      ),
+
+    // All-time savings — same query without the date filter; used by the
+    // weekly digest's hero number ("you've saved $X total with Renewal Radar").
+    db
+      .select({
+        savedCents: sql<number>`coalesce(sum(${savingsRecordsTable.savedAnnualUsdCents}), 0)::bigint`,
+      })
+      .from(savingsRecordsTable)
+      .where(eq(savingsRecordsTable.accountId, accountId)),
   ]);
 
   return {
@@ -211,6 +258,12 @@ export async function getDashboardKpis(
     noticeDeadlinesNext30Count: deadlines[0]?.count ?? 0,
     noticeDeadlinesNext30ValueCents: deadlines[0]?.valueCents ?? 0,
     totalAnnualSpendCents: totalSpend[0]?.valueCents ?? 0,
+    // `coalesce(sum(...))::bigint` comes back as a string from node-postgres
+    // because JS numbers can't represent the full int64 range. We round-trip
+    // through Number() because individual savings rows fit comfortably; if
+    // a single account ever crosses ~$90T in savings we'll revisit.
+    savedYtdAnnualUsdCents: Number(savedYtd[0]?.savedCents ?? 0),
+    savedAllTimeAnnualUsdCents: Number(savedAllTime[0]?.savedCents ?? 0),
   };
 }
 

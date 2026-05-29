@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import { usersTable } from "@server/infrastructure/db/schema";
 
@@ -40,4 +40,21 @@ export async function userBelongsToAccount(
     .where(and(eq(usersTable.accountId, accountId), eq(usersTable.id, userId)))
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Count of users currently seated against an account's plan.
+ *
+ * Archived users (P7.2) have been moved to `user_archive` and no longer
+ * appear in `users` at all — a removed user automatically frees a seat
+ * without any predicate filter here. The query stays simple.
+ */
+export async function countActiveUsers(accountId: string): Promise<number> {
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.accountId, accountId));
+  return row?.count ?? 0;
 }

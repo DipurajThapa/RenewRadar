@@ -27,6 +27,9 @@ export const getCurrentAccountAndUser = cache(
       redirect("/sign-in");
     }
 
+    // Archived users (P7.2) no longer live in `users` — they've been
+    // moved to `user_archive`. So the natural `eq(clerkUserId)` lookup
+    // already excludes them; no extra filter needed.
     const result = await db
       .select({
         user: usersTable,

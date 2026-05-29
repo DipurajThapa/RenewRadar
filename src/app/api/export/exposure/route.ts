@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { tierFeatureDeniedResponse } from "@server/middleware/tier-feature-response";
+import {
+  requireTierFeature,
+  TierFeatureDeniedError,
+} from "@server/domain/billing/tier-features";
 import { listExposureDetail } from "@server/infrastructure/db/repositories/reports";
 import { formatCurrencyCsv } from "@server/infrastructure/csv/format-helpers";
 
@@ -16,6 +21,17 @@ const HEADERS = [
 
 export async function GET() {
   const { account } = await getCurrentAccountAndUser();
+
+  // CSV export is a Starter+ feature.
+  try {
+    requireTierFeature(account.planTier, "csvImportExport");
+  } catch (err) {
+    if (err instanceof TierFeatureDeniedError) {
+      return tierFeatureDeniedResponse(err);
+    }
+    throw err;
+  }
+
   const rows = await listExposureDetail(account.id, 365);
 
   const lines: string[] = [HEADERS.join(",")];

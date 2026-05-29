@@ -24,6 +24,12 @@ type Props = {
   actionQueueRows: DigestRow[];
   decisionsThisWeek: number;
   savedThisWeekUsdCents: number;
+  /**
+   * Total saved across all time for this account. Drives the "you've saved
+   * $X total with Renewal Radar" hero at the top of the digest — ROI made
+   * visible at every touch.
+   */
+  savedAllTimeUsdCents: number;
 };
 
 function formatUsd(cents: number): string {
@@ -38,9 +44,14 @@ export function WeeklyDigestEmail({
   actionQueueRows,
   decisionsThisWeek,
   savedThisWeekUsdCents,
+  savedAllTimeUsdCents,
 }: Props) {
   const firstName = userName.split(" ")[0] ?? userName;
   const top = actionQueueRows.slice(0, 8);
+  // Only show the ROI hero once there's something to brag about. If the
+  // account hasn't recorded any savings yet, the digest skips the strip
+  // rather than showing "$0 saved" which would feel like an indictment.
+  const showSavingsHero = savedAllTimeUsdCents > 0;
 
   return (
     <BrandedShell>
@@ -58,6 +69,54 @@ export function WeeklyDigestEmail({
       <Text style={{ fontSize: "14px", color: "#374151", marginTop: "16px" }}>
         Hi {firstName},
       </Text>
+
+      {showSavingsHero && (
+        <Section
+          style={{
+            backgroundColor: "#ecfdf5",
+            border: "1px solid #a7f3d0",
+            borderRadius: "8px",
+            padding: "16px 18px",
+            margin: "0 0 20px 0",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: "11px",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              color: "#047857",
+              fontWeight: 600,
+              margin: 0,
+            }}
+          >
+            Saved with Renewal Radar
+          </Text>
+          <Text
+            style={{
+              fontSize: "28px",
+              fontWeight: 700,
+              color: "#065f46",
+              margin: "4px 0 6px 0",
+              lineHeight: 1.1,
+            }}
+          >
+            {formatUsd(savedAllTimeUsdCents)}{" "}
+            <span style={{ fontSize: "13px", fontWeight: 500 }}>all-time</span>
+          </Text>
+          <Text
+            style={{
+              fontSize: "13px",
+              color: "#047857",
+              margin: 0,
+            }}
+          >
+            Annualized savings from every decision you've logged.
+            {savedThisWeekUsdCents > 0 &&
+              ` ${formatUsd(savedThisWeekUsdCents)} of that was booked this week.`}
+          </Text>
+        </Section>
+      )}
 
       {top.length === 0 ? (
         <Text style={{ fontSize: "14px", color: "#374151" }}>

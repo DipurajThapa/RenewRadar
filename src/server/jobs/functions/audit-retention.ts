@@ -30,10 +30,8 @@ const RETENTION_DAYS_BY_TIER: Record<PlanTier, number> = {
 /**
  * Daily audit-log retention enforcement (06:00 UTC).
  *
- * For every account, delete audit_log entries older than the account's tier
- * retention. Posts a single audit_log.purged entry per account (so the
- * deletion itself is auditable — and the retention cap still applies to
- * that entry on the next run, which is fine).
+ * Inngest wrapper around `runAuditRetention(now)` — that pure function
+ * is exported so tests can pin behaviour at a controlled timestamp.
  */
 export const auditRetentionEnforcement = inngest.createFunction(
   {
@@ -43,59 +41,67 @@ export const auditRetentionEnforcement = inngest.createFunction(
   },
   { cron: "0 6 * * *" },
   async ({ step }) => {
-    const accounts = await step.run("list-accounts", async () =>
-      db.select().from(accountsTable)
+    return step.run("retention-sweep", () =>
+      runAuditRetention(new Date())
     );
-
-    let totalPurged = 0;
-    let accountsProcessed = 0;
-
-    for (const account of accounts) {
-      const days = RETENTION_DAYS_BY_TIER[account.planTier];
-      if (!days || !Number.isFinite(days)) {
-        // Skip unknown tiers — better to retain than to silently delete on
-        // a misconfiguration.
-        continue;
-      }
-
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-      const purgedCount = await step.run(
-        `purge-${account.id}`,
-        async () => {
-          const result = await db
-            .delete(auditLogTable)
-            .where(
-              and(
-                eq(auditLogTable.accountId, account.id),
-                lt(auditLogTable.createdAt, cutoff)
-              )
-            )
-            .returning({ id: auditLogTable.id });
-          return result.length;
-        }
-      );
-
-      if (purgedCount > 0) {
-        await step.run(`audit-${account.id}`, async () =>
-          writeAuditLog(db, {
-            accountId: account.id,
-            actorUserId: null, // system action
-            action: AUDIT_ACTIONS.auditLogPurged,
-            target: { entityType: "audit_log", entityId: account.id },
-            after: {
-              count: purgedCount,
-              cutoffIso: cutoff.toISOString(),
-              tier: account.planTier,
-              retentionDays: days,
-            },
-          })
-        );
-        totalPurged += purgedCount;
-      }
-      accountsProcessed++;
-    }
-
-    return { accountsProcessed, totalPurged };
   }
 );
+
+/**
+ * For every account, delete audit_log entries older than the account's
+ * tier retention. Posts a single `audit_log.purged` entry per account
+ * so the deletion itself is auditable (the next run will eventually
+ * sweep that entry too — that's fine, the recursion terminates).
+ *
+ * Exposed for tests under a controlled `now`.
+ */
+export async function runAuditRetention(now: Date): Promise<{
+  accountsProcessed: number;
+  totalPurged: number;
+}> {
+  const accounts = await db.select().from(accountsTable);
+
+  let totalPurged = 0;
+  let accountsProcessed = 0;
+
+  for (const account of accounts) {
+    const days = RETENTION_DAYS_BY_TIER[account.planTier];
+    if (!days || !Number.isFinite(days)) {
+      // Skip unknown tiers — better to retain than to silently delete on
+      // a misconfiguration.
+      continue;
+    }
+
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    const purgedResult = await db
+      .delete(auditLogTable)
+      .where(
+        and(
+          eq(auditLogTable.accountId, account.id),
+          lt(auditLogTable.createdAt, cutoff)
+        )
+      )
+      .returning({ id: auditLogTable.id });
+    const purgedCount = purgedResult.length;
+
+    if (purgedCount > 0) {
+      await writeAuditLog(db, {
+        accountId: account.id,
+        actorUserId: null, // system action
+        action: AUDIT_ACTIONS.auditLogPurged,
+        target: { entityType: "audit_log", entityId: account.id },
+        after: {
+          count: purgedCount,
+          cutoffIso: cutoff.toISOString(),
+          tier: account.planTier,
+          retentionDays: days,
+        },
+      });
+      totalPurged += purgedCount;
+    }
+    accountsProcessed++;
+  }
+
+  return { accountsProcessed, totalPurged };
+}

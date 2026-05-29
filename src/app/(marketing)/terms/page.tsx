@@ -1,9 +1,26 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { HeroBanner } from "@ui/components/shared/hero-banner";
+import {
+  ArticleJsonLd,
+  BreadcrumbJsonLd,
+} from "@ui/components/seo/structured-data";
 
-export const metadata = {
-  title: "Terms of Service — Renewal Radar",
+const PUBLISHED = "2026-05-01";
+const LAST_REVIEWED = "2026-05-28";
+
+export const metadata: Metadata = {
+  // Title template in the root layout appends " · Renewal Radar".
+  title: "Terms of service",
   description:
-    "Terms under which Renewal Radar provides the Service.",
+    "Terms under which Renewal Radar provides the Service. Plain language; sections cover the advisor-not-agent principle, billing, refunds, and limited liability.",
+  alternates: { canonical: "/terms" },
+  openGraph: {
+    title: "Terms of service — Renewal Radar",
+    description: "What Renewal Radar does — and doesn't do.",
+    url: "/terms",
+    type: "article",
+  },
 };
 
 // ⚠️ REVIEW BEFORE PUBLIC LAUNCH ⚠️
@@ -16,26 +33,41 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="max-w-2xl mx-auto px-6 py-12 prose prose-sm prose-neutral">
-      <Link
-        href="/"
-        className="text-sm text-muted-foreground no-underline hover:underline"
-      >
-        ← Home
-      </Link>
+    <>
+      <HeroBanner
+        eyebrow="Legal · Terms"
+        title="Terms of service"
+        description="Terms under which Renewal Radar provides the Service. Written in plain language; everything important is in the first three sections."
+        compact
+        metaBelow={
+          <span>
+            <span className="font-medium text-foreground">Last reviewed</span>{" "}
+            <time dateTime={LAST_REVIEWED}>{LAST_REVIEWED}</time> · Published{" "}
+            <time dateTime={PUBLISHED}>{PUBLISHED}</time>
+          </span>
+        }
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", href: "/" },
+          { name: "Terms", href: "/terms" },
+        ]}
+      />
+      <ArticleJsonLd
+        headline="Renewal Radar terms of service"
+        description="Terms under which Renewal Radar provides the Service."
+        datePublished={PUBLISHED}
+        dateModified={LAST_REVIEWED}
+        url="/terms"
+      />
+      <main className="max-w-2xl mx-auto px-5 lg:px-8 pb-20 prose prose-sm prose-neutral">
+        <p>
+          These Terms of Service ("Terms") govern your use of Renewal Radar's
+          software-as-a-service product (the "Service"). By creating an
+          account or using the Service, you agree to these Terms.
+        </p>
 
-      <h1>Terms of Service</h1>
-      <p>
-        <em>Effective: [REPLACE WITH LAUNCH DATE]</em>
-      </p>
-
-      <p>
-        These Terms of Service ("Terms") govern your use of Renewal Radar's
-        software-as-a-service product (the "Service"). By creating an account
-        or using the Service, you agree to these Terms.
-      </p>
-
-      <h2>1. What Renewal Radar does — and doesn't do</h2>
+        <h2>1. What Renewal Radar does — and doesn't do</h2>
 
       <p>
         Renewal Radar tracks SaaS subscriptions and their notice deadlines.
@@ -237,6 +269,7 @@ export default function TermsPage() {
         General contact:{" "}
         <a href="mailto:hello@renewalradar.com">hello@renewalradar.com</a>
       </p>
-    </main>
+      </main>
+    </>
   );
 }

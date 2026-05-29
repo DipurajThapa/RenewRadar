@@ -20,7 +20,10 @@ export type NotificationTrigger =
   | "weekly_digest"
   | "monthly_summary"
   | "decision_confirmation"
-  | "welcome";
+  | "welcome"
+  | "intake_request_submitted"
+  | "intake_request_decided"
+  | "vendor_announcement";
 
 export const NOTIFICATION_TRIGGER_LABELS: Record<NotificationTrigger, string> = {
   notice_window_30: "Notice deadline in 30 days",
@@ -39,6 +42,9 @@ export const NOTIFICATION_TRIGGER_LABELS: Record<NotificationTrigger, string> = 
   monthly_summary: "Monthly summary",
   decision_confirmation: "Decision confirmation",
   welcome: "Welcome",
+  intake_request_submitted: "New purchase request to review",
+  intake_request_decided: "Your purchase request was reviewed",
+  vendor_announcement: "Vendor update",
 };
 
 export function notificationTriggerLabel(trigger: string): string {
@@ -89,6 +95,16 @@ export function notificationDestinationUrl(
 ): string {
   if (entityType === "subscription" && entityId) {
     return `/subscriptions/${entityId}`;
+  }
+  if (entityType === "intake_request" && entityId) {
+    return `/requests/${entityId}`;
+  }
+  // T4.10 — vendor announcements land in the customer's vendor-updates inbox.
+  if (
+    entityType === "vendor_announcement" ||
+    entityType === "vendor_announcement_delivery"
+  ) {
+    return "/vendor-updates";
   }
   if (trigger === "weekly_digest" || trigger === "monthly_summary") {
     return "/dashboard";

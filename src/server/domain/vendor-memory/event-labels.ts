@@ -21,6 +21,8 @@ export const VENDOR_EVENT_LABEL: Record<VendorEventKind, string> = {
   compliance_doc_expired: "Compliance doc expired",
   notice_deadline_missed: "Notice deadline missed",
   user_note_added: "Note added",
+  renewal_brief_generated: "Renewal brief generated",
+  savings_realized: "Savings realized",
 };
 
 export const RATIONALE_LABEL: Record<string, string> = {

@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS "recurring_charge_detected_triple_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "recurring_charge_detected_scope_unique" ON "recurring_charge" USING btree ("connection_id","normalized_merchant","currency","detected_cycle") WHERE status = 'detected';

@@ -2,13 +2,18 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { listAccountUsers } from "@server/infrastructure/db/repositories/users";
+import { listVendorsByAccount } from "@server/infrastructure/db/repositories/vendors";
 import { SubscriptionForm } from "@ui/features/subscriptions/subscription-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewSubscriptionPage() {
   const { account, user } = await getCurrentAccountAndUser();
-  const users = await listAccountUsers(account.id);
+  const [users, vendors] = await Promise.all([
+    listAccountUsers(account.id),
+    listVendorsByAccount(account.id),
+  ]);
+  const existingVendorNames = vendors.map((v) => v.name);
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -29,7 +34,12 @@ export default async function NewSubscriptionPage() {
         </p>
       </header>
 
-      <SubscriptionForm mode="create" users={users} currentUserId={user.id} />
+      <SubscriptionForm
+        mode="create"
+        users={users}
+        currentUserId={user.id}
+        existingVendorNames={existingVendorNames}
+      />
     </div>
   );
 }

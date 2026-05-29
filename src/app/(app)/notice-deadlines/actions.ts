@@ -10,10 +10,12 @@ import {
   subscriptionsTable,
 } from "@server/infrastructure/db/schema";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 import { upsertSavingsRecordFromDecision } from "@server/application/savings";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
+import { recordEvent } from "@server/infrastructure/analytics";
 import type {
   DecisionRationaleCode,
   NegotiationLever,
@@ -92,6 +94,12 @@ export async function logRenewalDecisionAction(
   formData: FormData
 ): Promise<LogDecisionResult> {
   const { account, user } = await getCurrentAccountAndUser();
+  try {
+    requireRole(user, "member");
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    throw err;
+  }
 
   // Coerce form data into the shape Zod expects
   const decisionNote = (formData.get("decisionNote") ?? "").toString().trim();
@@ -379,6 +387,25 @@ export async function logRenewalDecisionAction(
       error: "Couldn't log the decision. Please try again.",
     };
   }
+
+  // Activation funnel: the renewal decision is the most important commercial
+  // event in the product. We fire after both the decision write and the
+  // savings upsert so the event reflects the user-visible outcome.
+  void recordEvent({
+    event: "renewal_decision.logged",
+    context: { accountId: account.id, userId: user.id },
+    properties: {
+      renewalEventId: parsed.data.renewalEventId,
+      decision: parsed.data.decision,
+      hasRationale:
+        Array.isArray(parsed.data.rationaleCodes) &&
+        parsed.data.rationaleCodes.length > 0,
+      negotiationLever: parsed.data.negotiationLever ?? "none",
+      requiresApproval: account.requireApprovals === true,
+      adjustedSeatCount: parsed.data.adjustedSeatCount ?? null,
+      adjustedUnitPriceCents: parsed.data.adjustedUnitPriceCents ?? null,
+    },
+  });
 
   revalidatePath("/notice-deadlines");
   revalidatePath("/renewals");

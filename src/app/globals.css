@@ -2,28 +2,75 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design system — single source of truth for tokens.
+ *
+ * Two semantic palettes:
+ *   - neutral (slate-tinted greys, used everywhere)
+ *   - brand (indigo accent for primary CTAs)
+ *   - signal accents for status (emerald/amber/red) that the badge primitive
+ *     wraps so feature code never reaches for raw color classes
+ *
+ * Everything else (shadow scale, radius, typography) is also defined here
+ * and exposed as Tailwind tokens via tailwind.config.ts.
+ */
 @layer base {
   :root {
+    /* Neutral surface — warm-cool slate, NOT pure grey. */
     --background: 0 0% 100%;
-    --foreground: 0 0% 9%;
+    --foreground: 222 47% 11%; /* slate-900 */
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 47% 11%;
+
+    /* Brand — indigo. Picked for trust + savings semantics without going
+       full enterprise-blue. */
+    --primary: 234 89% 60%; /* indigo-500 */
+    --primary-foreground: 0 0% 100%;
+    --primary-strong: 234 89% 50%; /* indigo-600, used on hover */
+    --primary-soft: 234 100% 97%; /* indigo-50, used for soft surfaces */
+
+    /* Secondary = a quiet neutral surface for chips/quiet buttons. */
+    --secondary: 220 14% 96%; /* slate-100 */
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%; /* slate-500 */
+
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Status palettes — referenced by the Badge primitive (not raw color
+       classes). Keeps the surface area for future themability tiny. */
+    --success: 152 76% 36%; /* emerald-600 */
+    --success-foreground: 0 0% 100%;
+    --success-soft: 151 81% 96%; /* emerald-50 */
+    --success-soft-foreground: 156 73% 22%; /* emerald-800 */
+
+    --warning: 38 92% 50%; /* amber-500 */
+    --warning-foreground: 0 0% 100%;
+    --warning-soft: 48 100% 96%; /* amber-50 */
+    --warning-soft-foreground: 26 83% 28%; /* amber-900 */
+
+    --destructive: 0 72% 51%; /* red-600 */
+    --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 86% 97%; /* red-50 */
+    --destructive-soft-foreground: 0 70% 35%;
+
+    --border: 220 13% 91%; /* slate-200 */
+    --input: 220 13% 91%;
+    --ring: 234 89% 60%; /* match primary so focus rings feel intentional */
+
+    /* Radius — slightly larger than shadcn default so cards feel modern. */
+    --radius: 0.75rem;
+
+    /* Page chrome — sidebar gets a distinct surface so the content area
+       reads as the focal point. */
+    --sidebar: 220 14% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-muted-foreground: 220 9% 46%;
   }
 }
 
@@ -32,7 +79,111 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background text-foreground antialiased;
+    /* Refined OpenType:
+       - rlig + calt: required ligatures + contextual alternates (defaults)
+       - ss01: stylistic set 1 (sharper digits on Inter)
+       - cv11: alternative '1' for tabular numerals
+       Without these the dashboard's "1234" digits feel flat. */
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "cv11" 1;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+  /* A sharper, denser display face for hero/section headings. Loaded as the
+     `font-display` token in tailwind config; falls back gracefully. */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
+  }
+  /* Tabular numerals on anything money-shaped. Components opt in with
+     `.tabular-nums` but turning it on globally for elements that look like
+     prices is cheap and improves alignment. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Component-layer helpers used across the surface.
+ *
+ * `.surface-elevated` — the card hover state baseline. Pulling it into a
+ * utility lets Card add it conditionally and keeps shadows consistent.
+ * `.bg-grid` — a subtle dot grid behind hero / empty states. Painterly
+ * decoration only, very low contrast.
+ */
+@layer components {
+  .surface-elevated {
+    box-shadow:
+      0 1px 2px 0 hsl(222 47% 11% / 0.04),
+      0 1px 3px 0 hsl(222 47% 11% / 0.05);
+  }
+  .surface-elevated-hover {
+    box-shadow:
+      0 4px 6px -1px hsl(222 47% 11% / 0.06),
+      0 2px 4px -2px hsl(222 47% 11% / 0.05);
+  }
+  .bg-grid {
+    background-image: radial-gradient(
+      hsl(220 13% 91%) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
+  }
+  .bg-grid-fade {
+    -webkit-mask-image: radial-gradient(
+      ellipse 60% 50% at 50% 0%,
+      black,
+      transparent
+    );
+    mask-image: radial-gradient(
+      ellipse 60% 50% at 50% 0%,
+      black,
+      transparent
+    );
+  }
+  /*
+   * Lift — used by interactive cards. Hover raises the surface ~2px and
+   * promotes the shadow. Combined with the `transition-shadow` already in
+   * Card, the effect is subtle but unmistakable.
+   *
+   * `motion-safe:` means users with prefers-reduced-motion get no transform
+   * — they still get the shadow change so the affordance is preserved.
+   */
+  .surface-lift {
+    @apply motion-safe:transition-[transform,box-shadow] motion-safe:duration-200 motion-safe:ease-out;
+  }
+  .surface-lift:hover {
+    @apply motion-safe:-translate-y-0.5;
+    box-shadow:
+      0 12px 24px -10px hsl(222 47% 11% / 0.10),
+      0 4px 8px -2px hsl(222 47% 11% / 0.06);
+  }
+
+  /*
+   * Stagger fade-in for grids — apply `.animate-stagger` on the container
+   * and the children fade in with a 60ms cascade. Tailwind doesn't ship
+   * this; tiny hand-rolled CSS is cheaper than a motion lib.
+   */
+  .animate-stagger > * {
+    opacity: 0;
+    animation: stagger-in 0.45s ease-out forwards;
+  }
+  .animate-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .animate-stagger > *:nth-child(2) { animation-delay: 60ms; }
+  .animate-stagger > *:nth-child(3) { animation-delay: 120ms; }
+  .animate-stagger > *:nth-child(4) { animation-delay: 180ms; }
+  .animate-stagger > *:nth-child(5) { animation-delay: 240ms; }
+  .animate-stagger > *:nth-child(6) { animation-delay: 300ms; }
+  .animate-stagger > *:nth-child(7) { animation-delay: 360ms; }
+  .animate-stagger > *:nth-child(8) { animation-delay: 420ms; }
+  @keyframes stagger-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Users who opted out of motion get the final state with no animation. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-stagger > * {
+      opacity: 1;
+      animation: none;
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import { invitationsTable } from "@server/infrastructure/db/schema";
 import type { Invitation } from "@server/infrastructure/db/schema";
@@ -43,6 +43,32 @@ export async function listPendingInvitations(
       invitedAt: r.invitedAt,
       expiresAt: r.expiresAt,
     }));
+}
+
+/**
+ * Count of pending (unaccepted + unexpired) invitations for an account.
+ *
+ * Used by the seat-cap enforcement to bound (active users + pending invites)
+ * against the plan's `maxUsers`. Expired invites are excluded — they cannot
+ * convert to a seat anymore. Accepted invites convert into a User row, so
+ * counting them separately would double-count.
+ */
+export async function countPendingInvitations(
+  accountId: string
+): Promise<number> {
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+    })
+    .from(invitationsTable)
+    .where(
+      and(
+        eq(invitationsTable.accountId, accountId),
+        isNull(invitationsTable.acceptedAt),
+        gt(invitationsTable.expiresAt, new Date())
+      )
+    );
+  return row?.count ?? 0;
 }
 
 /**

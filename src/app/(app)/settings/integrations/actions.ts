@@ -6,6 +6,10 @@ import { z } from "zod";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import {
+  requireTierFeature,
+  TierFeatureDeniedError,
+} from "@server/domain/billing/tier-features";
+import {
   disableIntegration,
   upsertIntegration,
 } from "@server/application/integrations";
@@ -29,8 +33,13 @@ export async function saveSlackIntegrationAction(
   const { account, user } = await getCurrentAccountAndUser();
   try {
     requireRole(user, "admin");
+    // Slack alerts are a Growth+ feature. UI hides the form on lower tiers;
+    // this is defense-in-depth.
+    requireTierFeature(account.planTier, "slackAlerts");
   } catch (err) {
-    if (err instanceof ForbiddenError) return { ok: false, formError: err.message };
+    if (err instanceof ForbiddenError || err instanceof TierFeatureDeniedError) {
+      return { ok: false, formError: err.message };
+    }
     throw err;
   }
 

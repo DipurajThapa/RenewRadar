@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { db } from "@server/infrastructure/db/client";
 import { integrationsTable } from "@server/infrastructure/db/schema";
 import type { Integration, IntegrationKind } from "@server/infrastructure/db/schema";
@@ -76,31 +77,71 @@ export async function getIcsIntegration(
 }
 
 /**
+ * Stable SHA-256 of an ICS token. Used as an indexed lookup key so a single
+ * row decryption (with scrypt key derivation) doesn't have to happen for
+ * every row in the table on each public calendar request. SHA-256 has no
+ * collisions worth defending against, so a single row match is conclusive.
+ *
+ * Exported so the upsert path can compute and persist the same hash.
+ */
+export function computeIcsTokenLookupHash(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+/**
  * Look up the (accountId, token) pair for an ICS export request. Used by the
  * `/api/calendar/[token].ics` route handler — no auth required, just a valid
  * unguessable token.
  *
- * To keep the lookup O(N over accounts) we'd want a separate index, but in
- * V1 there are very few integrations per account and the table is small.
- * If this becomes a hotspot we hash the token and index the hash.
+ * Pre-fix: this scanned every account row and ran `scryptSync` per row to
+ * decrypt, then compared in-cipher tokens. With N accounts, that was O(N)
+ * CPU-intensive work per request — a CPU-exhaustion DoS surface for any
+ * unauthenticated attacker hitting the route with garbage tokens.
+ *
+ * Post-fix: we look up by indexed `token_lookup_hash` (single row), then
+ * decrypt only that candidate to verify the in-cipher token matches. The
+ * lookup is O(1) regardless of account count.
+ *
+ * Disabled integrations are filtered out — `disableIcsExportAction` flips
+ * `enabled=false`; without this filter the feed kept serving until the
+ * token was also rotated (audit M3).
  */
 export async function findAccountByIcsToken(
   token: string
 ): Promise<{ accountId: string } | null> {
-  // Constant-time-ish enumeration — small N, but worth flagging for revisit.
+  if (!token) return null;
+  const hash = computeIcsTokenLookupHash(token);
+
   const rows = await db
     .select()
     .from(integrationsTable)
-    .where(eq(integrationsTable.kind, "ics_export"));
-  for (const row of rows) {
-    try {
-      const config = decryptJson<IcsConfig>(row.accountId, row.configCiphertext);
-      if (config.token === token) {
-        return { accountId: row.accountId };
-      }
-    } catch {
-      // Skip rows that fail to decrypt (likely a key rotation in flight).
+    .where(
+      and(
+        eq(integrationsTable.kind, "ics_export"),
+        eq(integrationsTable.tokenLookupHash, hash),
+        eq(integrationsTable.enabled, true)
+      )
+    )
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return null;
+
+  // Verify the in-cipher token matches the lookup hash. SHA-256 collisions
+  // aren't a real concern, but pinning the in-cipher value guards against
+  // a future schema bug where the hash and ciphertext drift out of sync.
+  try {
+    const config = decryptJson<IcsConfig>(row.accountId, row.configCiphertext);
+    if (config.token !== token) {
+      console.warn(
+        "[findAccountByIcsToken] hash matched but in-cipher token differed; ignoring"
+      );
+      return null;
     }
+  } catch (err) {
+    console.error("[findAccountByIcsToken] decrypt failed:", err);
+    return null;
   }
-  return null;
+
+  return { accountId: row.accountId };
 }

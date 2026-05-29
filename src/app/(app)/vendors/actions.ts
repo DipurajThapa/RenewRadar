@@ -9,6 +9,12 @@ import {
   deleteComplianceArtifact,
   upsertComplianceArtifact,
 } from "@server/application/compliance";
+import {
+  blockVendor,
+  findMatchingVendorOrg,
+  requestConnection,
+  VendorConnectionError,
+} from "@server/application/vendor-portal/connections";
 import type { ComplianceArtifactKind } from "@server/infrastructure/db/schema";
 
 export type ComplianceActionResult =
@@ -84,6 +90,77 @@ export async function recordComplianceArtifactAction(input: {
   }
 
   revalidatePath(`/vendors/${parsed.data.vendorId}`);
+  return { ok: true };
+}
+
+// ─── T4.10 Slice 3 — Vendor portal connections ────────────────────────────
+
+export type ConnectionActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Customer requests a connection to the verified vendor_org matching this
+ * vendor row. Reveals the account to the vendor — so admin+ only.
+ */
+export async function requestVendorConnectionAction(
+  customerVendorId: string
+): Promise<ConnectionActionResult> {
+  const { account, user } = await getCurrentAccountAndUser();
+  try {
+    requireRole(user, "admin");
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    throw err;
+  }
+  try {
+    const match = await findMatchingVendorOrg({
+      accountId: account.id,
+      customerVendorId,
+    });
+    if (!match) {
+      return {
+        ok: false,
+        error: "No verified vendor on Renewal Radar matches this vendor.",
+      };
+    }
+    await requestConnection({
+      accountId: account.id,
+      vendorOrgId: match.vendorOrg.id,
+      customerVendorId,
+      requestedByUserId: user.id,
+    });
+  } catch (err) {
+    if (err instanceof VendorConnectionError) return { ok: false, error: err.message };
+    console.error("[requestVendorConnectionAction] failed:", err);
+    return { ok: false, error: "Server error" };
+  }
+  revalidatePath(`/vendors/${customerVendorId}`);
+  return { ok: true };
+}
+
+/** Customer blocks a vendor org — stops all future deliveries. admin+ only. */
+export async function blockVendorConnectionAction(input: {
+  vendorOrgId: string;
+  customerVendorId: string;
+}): Promise<ConnectionActionResult> {
+  const { account, user } = await getCurrentAccountAndUser();
+  try {
+    requireRole(user, "admin");
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    throw err;
+  }
+  try {
+    await blockVendor({
+      accountId: account.id,
+      vendorOrgId: input.vendorOrgId,
+      userId: user.id,
+    });
+  } catch (err) {
+    if (err instanceof VendorConnectionError) return { ok: false, error: err.message };
+    console.error("[blockVendorConnectionAction] failed:", err);
+    return { ok: false, error: "Server error" };
+  }
+  revalidatePath(`/vendors/${input.customerVendorId}`);
   return { ok: true };
 }
 

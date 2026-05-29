@@ -145,7 +145,13 @@ export function parseSubscriptionCsv(
     return { headerOk: false, missingColumns: [...SUBSCRIPTION_CSV_HEADERS], rows: [] };
   }
 
-  const headerCells = parseCsvLine(lines[0]!).map((c) => c.trim().toLowerCase());
+  // Multi-language column aliases (T3.8). The header is matched
+  // case-insensitively against the canonical English names AND a small
+  // set of common DE/FR/ES/JA/PT aliases. The match map is constructed
+  // once on first call.
+  const headerCells = parseCsvLine(lines[0]!).map((c) =>
+    canonicalizeHeaderCell(c)
+  );
   const headerIndex = new Map<string, number>();
   headerCells.forEach((h, i) => headerIndex.set(h, i));
 
@@ -339,6 +345,201 @@ function parseCsvLine(line: string): string[] {
   return cells;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// T3.8 — Multi-language header aliases.
+//
+// The canonical schema (vendor/product/billing_cycle/…) is English. The
+// import is expected to work for finance teams whose templates use a
+// different language. We accept common aliases for the languages most
+// likely to appear in enterprise sales — German, French, Spanish,
+// Japanese, Portuguese — without adding a full i18n stack.
+//
+// Match rules:
+//   - Case-insensitive
+//   - Diacritics-insensitive ("période" matches "periode")
+//   - Whitespace + underscore + hyphen are interchangeable (so "Term Start",
+//     "term-start", and "term_start" all canonicalize the same way)
+//
+// Adding more aliases is cheap — the cost is one Map lookup per cell. The
+// alias map is small enough to keep readable in source rather than loaded
+// from JSON.
+// ─────────────────────────────────────────────────────────────────────────
+const HEADER_ALIASES: Record<SubscriptionCsvHeader, readonly string[]> = {
+  vendor: [
+    // DE
+    "lieferant",
+    "anbieter",
+    "verkaufer",
+    // FR
+    "fournisseur",
+    "vendeur",
+    // ES
+    "proveedor",
+    "vendedor",
+    // PT
+    "fornecedor",
+    // JA — vendor
+    "ベンダー",
+    "取引先",
+    "サプライヤー",
+  ],
+  product: [
+    "produkt", // DE
+    "produit", // FR
+    "producto", // ES
+    "produto", // PT
+    "製品", // JA
+    "プロダクト",
+  ],
+  plan: [
+    "tarif", // DE/FR
+    "plano", // PT
+    "プラン", // JA
+  ],
+  billing_cycle: [
+    "abrechnungszyklus", // DE
+    "cycle de facturation", // FR
+    "ciclo de facturacion", // ES
+    "ciclo de facturação", // PT
+    "請求サイクル", // JA
+    "billing cycle",
+    "billing period",
+  ],
+  term_start: [
+    "vertragsbeginn", // DE
+    "debut du contrat", // FR
+    "inicio del contrato", // ES
+    "inicio do contrato", // PT
+    "契約開始日", // JA
+    "start date",
+    "term start",
+    "contract start",
+  ],
+  term_end: [
+    "vertragsende", // DE
+    "fin du contrat", // FR
+    "fin del contrato", // ES
+    "fim do contrato", // PT
+    "契約終了日", // JA
+    "end date",
+    "term end",
+    "contract end",
+  ],
+  notice_period_days: [
+    "kundigungsfrist", // DE
+    "preavis", // FR
+    "preaviso", // ES/PT
+    "通知期間", // JA
+    "notice period",
+    "notice days",
+  ],
+  seats: [
+    "platze", // DE
+    "sieges", // FR
+    "asientos", // ES
+    "assentos", // PT
+    "ライセンス数", // JA
+    "licenses",
+    "users",
+  ],
+  unit_price_usd: [
+    "stuckpreis", // DE
+    "prix unitaire", // FR
+    "precio unitario", // ES/PT
+    "単価", // JA
+    "unit price",
+    "price per seat",
+  ],
+  annualized_usd: [
+    "jahreskosten", // DE
+    "cout annuel", // FR
+    "costo anual", // ES
+    "custo anual", // PT
+    "年額", // JA
+    "annual cost",
+  ],
+  auto_renew: [
+    "automatische verlangerung", // DE
+    "renouvellement automatique", // FR
+    "renovacion automatica", // ES
+    "renovacao automatica", // PT
+    "自動更新", // JA
+    "autorenewal",
+  ],
+  status: [
+    "zustand", // DE
+    "etat", // FR
+    "estado", // ES/PT
+    "ステータス", // JA
+  ],
+  owner_email: [
+    "verantwortlicher", // DE
+    "responsable", // FR/ES
+    "responsavel", // PT
+    "担当者メール", // JA
+    "owner",
+    "owner email",
+  ],
+  notice_deadline: [
+    "kundigungstermin", // DE
+    "date limite preavis", // FR
+    "fecha limite de preaviso", // ES
+    "data limite do preaviso", // PT
+    "通知期限", // JA
+  ],
+  notes: [
+    "anmerkungen", // DE
+    "remarques", // FR
+    "notas", // ES/PT
+    "備考", // JA
+    "comments",
+    "comment",
+  ],
+};
+
+/**
+ * Build a Map from any-alias → canonical column name. Computed once at
+ * module load; the parser uses it in a tight loop.
+ */
+const HEADER_ALIAS_TO_CANONICAL = (() => {
+  const out = new Map<string, SubscriptionCsvHeader>();
+  for (const canonical of SUBSCRIPTION_CSV_HEADERS) {
+    out.set(normalizeHeaderKey(canonical), canonical);
+    for (const alias of HEADER_ALIASES[canonical]) {
+      out.set(normalizeHeaderKey(alias), canonical);
+    }
+  }
+  return out;
+})();
+
+/**
+ * Apply the alias lookup to a raw header cell and return its canonical
+ * column name — or the normalized key as a fallback so unknown columns
+ * pass through unchanged (they'll be ignored downstream rather than
+ * causing a header-mismatch error).
+ */
+function canonicalizeHeaderCell(rawCell: string): string {
+  const key = normalizeHeaderKey(rawCell);
+  const canonical = HEADER_ALIAS_TO_CANONICAL.get(key);
+  return canonical ?? key;
+}
+
+/**
+ * Normalize a header label for matching. Lowercase, strip diacritics,
+ * collapse whitespace / underscore / hyphen runs into single spaces.
+ */
+function normalizeHeaderKey(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip combining marks (diacritics)
+    .toLowerCase()
+    .replace(/[\s_-]+/g, " ")
+    .trim()
+    // Canonical names use underscores; map normalized "term start" →
+    // "term_start" so the existing lookup table doesn't need to change.
+    .replace(/ /g, "_");
+}
+
 function escapeCsvCell(value: string): string {
   if (value === "") return "";
   // RFC 4180: any cell containing a comma, double-quote, CR, or LF must be
@@ -347,4 +548,60 @@ function escapeCsvCell(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
+}
+
+/**
+ * Normalize tabular text from any of the common clipboard / file shapes
+ * into the CSV format `parseSubscriptionCsv` expects.
+ *
+ * Real-world inputs:
+ *   - **Excel paste** uses tabs as field separators. Cells can contain
+ *     commas (e.g. "Slack, Inc.") without quoting because the separator
+ *     isn't a comma.
+ *   - **Google Sheets paste** is also TSV by default.
+ *   - **macOS Numbers paste** is TSV.
+ *   - **A saved CSV file** is CSV — comma separated, quoted where needed.
+ *   - **Mixed clipboards** can carry both representations; the browser
+ *     picks one. We sniff and pick the right path.
+ *
+ * Why sniff first vs always converting: a well-formed CSV with vendor names
+ * like "Acme, Inc." would be mis-parsed if we naively split on tabs (no
+ * tabs to split on, so the row would be left as one giant cell). The
+ * sniff catches CSV-shaped input early and returns it unchanged.
+ *
+ * Algorithm:
+ *   1. Count tabs vs commas in the first 1 KB. Whichever is more frequent
+ *      is the delimiter. Ties favor CSV (the canonical format).
+ *   2. If CSV, return unchanged.
+ *   3. If TSV, split on physical newlines (tabs cannot span lines in
+ *      Excel paste), split each line on \t, escape each cell per CSV
+ *      rules, join with commas.
+ */
+export function normalizeTabularInput(text: string): string {
+  if (text.length === 0) return text;
+  const sample = text.slice(0, 1024);
+  let tabs = 0;
+  let commas = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const ch = sample[i];
+    if (ch === "\t") tabs++;
+    else if (ch === ",") commas++;
+  }
+  if (tabs === 0 || commas >= tabs) return text;
+
+  // TSV → CSV. Excel paste uses physical CRLF/LF/CR; embedded newlines
+  // inside a cell are NOT supported by spreadsheet paste (they break the
+  // row), so a plain split is correct here.
+  const lines = text.split(/\r\n|\n|\r/);
+  const csvLines: string[] = [];
+  for (const line of lines) {
+    if (line === "" && csvLines.length === lines.length - 1) {
+      // Trailing blank line from a copy-paste — drop it so we don't
+      // produce a phantom empty CSV row.
+      continue;
+    }
+    const cells = line.split("\t").map((c) => escapeCsvCell(c));
+    csvLines.push(cells.join(","));
+  }
+  return csvLines.join("\n");
 }

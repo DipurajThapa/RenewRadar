@@ -4,6 +4,10 @@ import { db } from "@server/infrastructure/db/client";
 import { accountsTable, integrationsTable } from "@server/infrastructure/db/schema";
 import { listActionQueueRows } from "@server/infrastructure/db/repositories/action-queue";
 import { decryptJson } from "@server/infrastructure/crypto/envelope";
+import { hasTierFeature } from "@server/domain/billing/tier-features";
+import { createLogger } from "@server/infrastructure/observability/logger";
+
+const log = createLogger({ component: "jobs.slack_daily_summary" });
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://renewalradar.com";
 
@@ -32,6 +36,14 @@ export const slackDailySummary = inngest.createFunction(
     let skipped = 0;
 
     for (const account of accounts) {
+      // Skip accounts whose plan tier no longer includes Slack alerts.
+      // Defends against a Growth→Starter downgrade leaving an enabled
+      // webhook live with a stale config row.
+      if (!hasTierFeature(account.planTier, "slackAlerts")) {
+        skipped++;
+        continue;
+      }
+
       const [integration] = await step.run(`slack-${account.id}`, async () =>
         db
           .select()
@@ -51,10 +63,7 @@ export const slackDailySummary = inngest.createFunction(
         );
         webhookUrl = config.webhookUrl;
       } catch (err) {
-        console.error(
-          `[slack-daily-summary] decrypt failed for ${account.id}:`,
-          err
-        );
+        log.error("slack_config_decrypt_failed", err, { accountId: account.id });
         skipped++;
         continue;
       }
@@ -99,9 +108,10 @@ export const slackDailySummary = inngest.createFunction(
       if (result.ok) {
         posted++;
       } else {
-        console.error(
-          `[slack-daily-summary] post failed for ${account.id}: ${result.status}`
-        );
+        log.error("slack_post_failed", undefined, {
+          accountId: account.id,
+          status: result.status,
+        });
         skipped++;
       }
     }

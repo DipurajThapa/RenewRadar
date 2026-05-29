@@ -18,6 +18,11 @@ export type InAppNotificationRow = {
   productName: string | null;
 };
 
+export type NotificationListRow = InAppNotificationRow & {
+  channel: string;
+  sentAt: Date | null;
+};
+
 /**
  * Most recent in-app notifications for a user, newest first.
  *
@@ -63,6 +68,50 @@ export async function listRecentInAppNotifications(
     )
     .orderBy(desc(notificationsTable.createdAt))
     .limit(limit);
+}
+
+/**
+ * Full notifications history for the inbox page. Returns ALL channels
+ * (email + in-app + slack), filtered to the caller's user. Includes
+ * `status` and `sentAt` so the page can surface failed sends to admins.
+ *
+ * Limit defaults to 100. The inbox is paginated client-side for simplicity.
+ */
+export async function listNotificationsForUser(
+  accountId: string,
+  userId: string,
+  options: { limit?: number } = {}
+): Promise<NotificationListRow[]> {
+  return db
+    .select({
+      id: notificationsTable.id,
+      trigger: notificationsTable.trigger,
+      entityType: notificationsTable.entityType,
+      entityId: notificationsTable.entityId,
+      status: notificationsTable.status,
+      createdAt: notificationsTable.createdAt,
+      channel: notificationsTable.channel,
+      sentAt: notificationsTable.sentAt,
+      vendorName: vendorsTable.name,
+      productName: subscriptionsTable.productName,
+    })
+    .from(notificationsTable)
+    .leftJoin(
+      subscriptionsTable,
+      and(
+        eq(notificationsTable.entityType, "subscription"),
+        eq(notificationsTable.entityId, subscriptionsTable.id)
+      )
+    )
+    .leftJoin(vendorsTable, eq(subscriptionsTable.vendorId, vendorsTable.id))
+    .where(
+      and(
+        eq(notificationsTable.accountId, accountId),
+        eq(notificationsTable.userId, userId)
+      )
+    )
+    .orderBy(desc(notificationsTable.createdAt))
+    .limit(options.limit ?? 100);
 }
 
 /**

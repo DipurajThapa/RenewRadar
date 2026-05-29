@@ -132,6 +132,18 @@ export type UserNoteAddedPayload = {
   note: string;
 };
 
+export type RenewalBriefGeneratedPayload = {
+  recommendedAction: string;
+  engine: string; // "deterministic" | "llm"
+  confidencePct: number;
+};
+
+export type SavingsRealizedPayload = {
+  projectedSavedAnnualUsdCents: number;
+  realizedSavedAnnualUsdCents: number;
+  status: string; // "realized" | "variance"
+};
+
 /**
  * Discriminated union keyed by kind. Lets the timeline UI switch on
  * `event.kind` and have TypeScript narrow `event.payload`.
@@ -153,6 +165,8 @@ export type VendorEventPayloadByKind = {
   compliance_doc_expired: ComplianceDocExpiredPayload;
   notice_deadline_missed: NoticeDeadlineMissedPayload;
   user_note_added: UserNoteAddedPayload;
+  renewal_brief_generated: RenewalBriefGeneratedPayload;
+  savings_realized: SavingsRealizedPayload;
 };
 
 export type TypedVendorEvent<K extends VendorEventKind = VendorEventKind> = {

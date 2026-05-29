@@ -1,5 +1,6 @@
 # Architecture documentation
 
+- [technical-specification.md](technical-specification.md) — **full system spec + dataflow diagrams** (context/L1/L2 DFDs, ER models, sequences, state machines, security model)
 - [overview.md](overview.md) — top-level layout + layer responsibilities + invariants
 - [layers.md](layers.md) — the allowed-import matrix
 - [adr/](adr/) — Architecture Decision Records for non-obvious calls

@@ -11,6 +11,8 @@ import {
   StickyNote,
   ClipboardCheck,
   ScrollText,
+  Sparkles,
+  BadgeCheck,
 } from "lucide-react";
 import type { VendorEventKind } from "@server/infrastructure/db/schema";
 import { VENDOR_EVENT_LABEL } from "@server/domain/vendor-memory/event-labels";
@@ -34,6 +36,8 @@ const ICON_BY_KIND: Record<VendorEventKind, React.ComponentType<{ className?: st
   compliance_doc_expired: AlertTriangle,
   notice_deadline_missed: AlertTriangle,
   user_note_added: StickyNote,
+  renewal_brief_generated: Sparkles,
+  savings_realized: BadgeCheck,
 };
 
 export function VendorTimeline({ events }: { events: VendorEventRow[] }) {

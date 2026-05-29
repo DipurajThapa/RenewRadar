@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
+  accountsTable,
   renewalEventsTable,
   subscriptionsTable,
   vendorsTable,
@@ -13,6 +14,52 @@ import type {
 import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
+import { recordEvent } from "@server/infrastructure/analytics";
+import {
+  TIER_DEFINITIONS,
+  type PlanTier,
+} from "@server/domain/billing/tier-definitions";
+import { requireAccountWritable } from "@server/application/billing/lock-state";
+import { countSubscriptionsTowardCap } from "@server/infrastructure/db/repositories/subscriptions";
+
+/**
+ * Thrown when creating a subscription would exceed the account's plan cap.
+ * Carries a human-readable upgrade nudge as its message so server actions can
+ * surface it directly. Distinct from AccountLockedError (over-capacity lock).
+ */
+export class SubscriptionLimitError extends Error {
+  readonly limit: number;
+  constructor(limit: number) {
+    super(`Plan limit reached (${limit} subscriptions). Upgrade to add another.`);
+    this.name = "SubscriptionLimitError";
+    this.limit = limit;
+  }
+}
+
+/**
+ * Single chokepoint for "may this account take on another subscription?" —
+ * enforces BOTH the over-capacity write lock and the plan subscription cap
+ * (drafts included, via countSubscriptionsTowardCap). Called by every create
+ * path (manual quick-add, starter templates, intake approval, spend-feed
+ * confirm) so no surface can bypass the cap. Throws AccountLockedError or
+ * SubscriptionLimitError.
+ */
+export async function assertCanCreateSubscription(
+  accountId: string
+): Promise<void> {
+  const [account] = await db
+    .select()
+    .from(accountsTable)
+    .where(eq(accountsTable.id, accountId))
+    .limit(1);
+  if (!account) throw new Error("Account not found");
+  requireAccountWritable(account);
+  const cap = TIER_DEFINITIONS[account.planTier as PlanTier].limits.maxSubscriptions;
+  if (Number.isFinite(cap)) {
+    const used = await countSubscriptionsTowardCap(accountId);
+    if (used >= cap) throw new SubscriptionLimitError(cap);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vendor helpers
@@ -146,6 +193,165 @@ export async function createSubscriptionWithRenewalEvent(input: {
       actorUserId: input.actorUserId,
       relatedEntityType: "subscription",
       relatedEntityId: subscription.id,
+    });
+
+    // Activation funnel: adding the first subscription (with or without a
+    // contract upload) is the user committing to the product. We fire here
+    // — fire-and-forget so the create path stays atomic from the user's
+    // perspective even if analytics is slow.
+    void recordEvent({
+      event: "subscription.created",
+      context: {
+        accountId: input.accountId,
+        userId: input.actorUserId,
+      },
+      properties: {
+        subscriptionId: subscription.id,
+        vendorId: subscription.vendorId,
+        billingCycle: subscription.billingCycle,
+        totalCostPerPeriodCents: subscription.totalCostPerPeriodCents,
+        autoRenew: subscription.autoRenew,
+        noticePeriodDays: subscription.noticePeriodDays,
+      },
+    });
+
+    return subscription;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2.7 — Create subscription DRAFT (minimal data, no renewal event, no alerts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CreateDraftInput = {
+  accountId: string;
+  actorUserId: string;
+  vendorName: string;
+  productName: string;
+  /** Estimated annualized cost in cents. Stored as totalCostPerPeriodCents
+   *  with billing_cycle=annual so existing reports treat it sanely. */
+  annualizedUsdCents: number;
+  notes?: string | null;
+};
+
+/**
+ * Create a draft subscription — captures vendor + product + estimated annual
+ * cost so a user can record "we pay for X" without having the contract terms
+ * in hand. Drafts:
+ *
+ *   - Set `status = 'draft'` so every "show me active subscriptions" query
+ *     (alerts, action queue, KPIs, reports) automatically excludes them.
+ *     The active-status filter is the single point of truth across 20+
+ *     repository queries — see [audit gap T2.7] for the grep.
+ *   - Do NOT create a renewal_event row. We don't know term_end yet, and
+ *     making one up would either fire bogus alerts or pollute the action
+ *     queue with "fix me" placeholders. The user promotes the draft to
+ *     active via the regular edit flow which fills in term dates and
+ *     creates the renewal_event lazily.
+ *   - Use placeholder term dates (today and today+365) so date columns
+ *     stay non-null per the schema. These dates are NEVER read for alerts
+ *     because the status filter excludes drafts first.
+ *   - Vendor row IS created (via ensureVendor) — vendor list is the user's
+ *     mental map of "what we pay for" and the draft belongs in it.
+ *
+ * The user promotes a draft → active by editing the subscription with
+ * full term details. That path is the existing updateSubscription flow.
+ */
+export async function createSubscriptionDraft(
+  input: CreateDraftInput
+): Promise<Subscription> {
+  if (!input.vendorName.trim()) {
+    throw new Error("Vendor name is required");
+  }
+  if (!input.productName.trim()) {
+    throw new Error("Product name is required");
+  }
+  if (
+    !Number.isFinite(input.annualizedUsdCents) ||
+    input.annualizedUsdCents < 0
+  ) {
+    throw new Error("Annualized cost must be a non-negative number");
+  }
+
+  // Gate EVERY draft create (manual quick-add, starter templates, intake
+  // approval, spend-feed confirm) on the over-capacity lock + plan cap. This is
+  // the single chokepoint — closes the cap bypass where confirming many
+  // auto-detected charges as drafts could exceed the plan limit (REV-4).
+  await assertCanCreateSubscription(input.accountId);
+
+  return db.transaction(async (tx) => {
+    // ensureVendor is account-scoped + case-insensitive; calling it inside
+    // the tx keeps the vendor + sub create atomic.
+    const trimmedVendor = input.vendorName.trim();
+    const accountVendors = await tx
+      .select()
+      .from(vendorsTable)
+      .where(eq(vendorsTable.accountId, input.accountId));
+    let vendor = accountVendors.find(
+      (v) => v.name.toLowerCase() === trimmedVendor.toLowerCase()
+    );
+    if (!vendor) {
+      const [created] = await tx
+        .insert(vendorsTable)
+        .values({ accountId: input.accountId, name: trimmedVendor })
+        .returning();
+      if (!created) throw new Error("Failed to create vendor for draft");
+      vendor = created;
+    }
+
+    // Placeholder term dates. These are NEVER read by alerts because the
+    // status filter on `subscriptions.status = 'active'` excludes drafts
+    // up front. When the user promotes the draft, they pick real dates
+    // through the normal edit form and the renewal event is created then.
+    const todayUtc = new Date(
+      Date.UTC(
+        new Date().getUTCFullYear(),
+        new Date().getUTCMonth(),
+        new Date().getUTCDate()
+      )
+    );
+    const placeholderEnd = new Date(todayUtc);
+    placeholderEnd.setUTCDate(placeholderEnd.getUTCDate() + 365);
+
+    const [subscription] = await tx
+      .insert(subscriptionsTable)
+      .values({
+        accountId: input.accountId,
+        vendorId: vendor.id,
+        ownerUserId: input.actorUserId,
+        productName: input.productName.trim(),
+        planName: null,
+        billingCycle: "annual" as const,
+        termStartDate: todayUtc.toISOString().split("T")[0]!,
+        termEndDate: placeholderEnd.toISOString().split("T")[0]!,
+        autoRenew: true,
+        noticePeriodDays: 30,
+        totalSeats: 1,
+        unitPriceCents: input.annualizedUsdCents,
+        totalCostPerPeriodCents: input.annualizedUsdCents,
+        status: "draft" as const,
+        notes: input.notes ?? null,
+      })
+      .returning();
+
+    if (!subscription) {
+      throw new Error("Failed to create draft subscription");
+    }
+
+    // Audit-log the draft creation so it appears in the activity log
+    // even though we don't fire renewal/vendor events. Operators searching
+    // for "where did this come from?" will find it.
+    await writeAuditLog(tx, {
+      accountId: input.accountId,
+      actorUserId: input.actorUserId,
+      action: AUDIT_ACTIONS.subscriptionCreated,
+      target: { entityType: "subscription", entityId: subscription.id },
+      after: {
+        kind: "draft",
+        vendorName: trimmedVendor,
+        productName: subscription.productName,
+        annualizedUsdCents: input.annualizedUsdCents,
+      },
     });
 
     return subscription;

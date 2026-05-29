@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@ui/components/primitives/card";
+import { PageHeader } from "@ui/components/shared/page-header";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   getNoticeDeadlineKpis,
@@ -29,19 +30,23 @@ export default async function NoticeDeadlinesPage({
   ]);
 
   return (
-    <div className="space-y-6 max-w-7xl">
-      <header>
-        <h1 className="text-2xl font-semibold">Notice Deadlines</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <div className="space-y-8">
+      <PageHeader>
+        <PageHeader.Title>Notice deadlines</PageHeader.Title>
+        <PageHeader.Description>
           The dates by which you must give written notice to avoid auto-renewal.
-        </p>
-      </header>
+        </PageHeader.Description>
+      </PageHeader>
 
       <NoticeDeadlineKpiStrip kpis={kpis} />
 
       <NoticeDeadlineFilters filter={filter} />
 
-      {rows.length === 0 ? <EmptyState rangeDays={filter.range} status={filter.status} /> : <NoticeDeadlineCalendar rows={rows} />}
+      {rows.length === 0 ? (
+        <EmptyState rangeDays={filter.range} status={filter.status} />
+      ) : (
+        <NoticeDeadlineCalendar rows={rows} />
+      )}
     </div>
   );
 }

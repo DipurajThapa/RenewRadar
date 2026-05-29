@@ -4,12 +4,23 @@ import { notFound } from "next/navigation";
 import { Card, CardContent } from "@ui/components/primitives/card";
 import { Button } from "@ui/components/primitives/button";
 import { Badge } from "@ui/components/primitives/badge";
+import { and, eq, sql } from "drizzle-orm";
+import { db } from "@server/infrastructure/db/client";
+import { savingsRecordsTable } from "@server/infrastructure/db/schema";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { getRenewalEventWithContext } from "@server/infrastructure/db/repositories/renewals";
 import { getSavingsForRenewalEvent } from "@server/infrastructure/db/repositories/savings";
+import { getInsightProvider } from "@server/infrastructure/ai";
+import { hasTierFeature } from "@server/domain/billing/tier-features";
+import { scoreRisk } from "@server/domain/risk/score";
+import { getVendorIntelligence } from "@server/infrastructure/db/repositories/vendor-memory";
+import { getVendorBenchmark } from "@server/application/vendor-benchmarks";
 import { DecideNowHeader } from "@ui/features/decide-now/header";
 import { DecideNowFacts } from "@ui/features/decide-now/facts";
 import { DecideNowForm } from "@ui/features/decide-now/form";
+import { AIInsightCard } from "@ui/components/shared/ai-insight-card";
+import { VendorPlaybookCard } from "@ui/components/shared/vendor-playbook-card";
+import { VendorBenchmarkCard } from "@ui/components/shared/vendor-benchmark-card";
 import { formatCurrency, formatDate } from "@shared/utils";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import type { SavingsRow } from "@server/infrastructure/db/repositories/savings";
@@ -58,6 +69,95 @@ export default async function DecideNowPage({ params, searchParams }: Props) {
     data.subscription.billingCycle
   );
 
+  // AI recommendation — computed server-side from the same signals the risk
+  // scorer uses, plus the subscription's prior savings ledger. Degrades
+  // silently if the provider throws. Days-to-deadline is computed from the
+  // already-stored notice deadline (no need to recompute from term end +
+  // notice period since the renewal event captures it).
+  const deadlineMs = new Date(
+    `${data.renewalEvent.noticeDeadline}T00:00:00Z`
+  ).getTime();
+  const todayMs = (() => {
+    const t = new Date();
+    return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  })();
+  const daysToDeadline = Math.round(
+    (deadlineMs - todayMs) / (1000 * 60 * 60 * 24)
+  );
+  const risk = scoreRisk({
+    daysUntilNoticeDeadline: daysToDeadline,
+    annualValueCents,
+    autoRenew: data.subscription.autoRenew,
+    isMissed: data.renewalEvent.status === "missed",
+  });
+  // After P6.7 the clause is a first-class column, no more text-grep on notes.
+  // Fall through to the old text-grep for legacy rows where the clause was
+  // appended to notes before the column existed.
+  const hasPriceIncreaseClause =
+    !!data.subscription.priceIncreaseClauseText ||
+    (data.subscription.notes ?? "").includes("Price increase clause");
+  const [pastSavingsRow] = await db
+    .select({
+      cents: sql<number>`coalesce(sum(${savingsRecordsTable.savedAnnualUsdCents}), 0)::int`,
+    })
+    .from(savingsRecordsTable)
+    .where(
+      and(
+        eq(savingsRecordsTable.accountId, account.id),
+        eq(savingsRecordsTable.subscriptionId, data.subscription.id)
+      )
+    );
+  const pastSavingsAnnualCents = pastSavingsRow?.cents ?? 0;
+
+  // Per-account playbook: the team's previous decision on this vendor.
+  // Reuses `getVendorIntelligence` which already pulls the last decision
+  // per subscription + rationale + lever. We pick the most recent entry
+  // that ISN'T the current renewal (current would be misleading — it's
+  // the one we're about to decide).
+  const vendorIntel = await getVendorIntelligence(
+    account.id,
+    data.subscription.vendorId
+  );
+  const lastDecisionOnVendor = vendorIntel.lastDecisions.find(
+    (d) => d.subscriptionId !== data.subscription.id
+  );
+
+  // Cross-account benchmark — the network-effects moat. Returns null
+  // when N < MIN_BENCHMARK_SAMPLE, in which case we render nothing.
+  const benchmark = await getVendorBenchmark(data.vendor.name).catch(
+    (err) => {
+      console.error("[decide] vendor benchmark failed:", err);
+      return null;
+    }
+  );
+
+  // AI recommendations are tied to the action-queue feature flag (Starter+).
+  // Free Forever skips the call entirely so we don't burn provider tokens on
+  // accounts that aren't paying for this surface.
+  let recommendation: Awaited<
+    ReturnType<
+      ReturnType<typeof getInsightProvider>["recommendRenewalDecision"]
+    >
+  > | null = null;
+  if (hasTierFeature(account.planTier, "actionQueue")) {
+    try {
+      const ai = getInsightProvider();
+      recommendation = await ai.recommendRenewalDecision({
+        vendorName: data.vendor.name,
+        productName: data.subscription.productName,
+        annualValueCents,
+        autoRenew: data.subscription.autoRenew,
+        daysUntilNoticeDeadline: daysToDeadline,
+        riskBand: risk.band,
+        hasPriceIncreaseClause,
+        pastSavingsAnnualCents,
+        noticeDeadlineMissed: data.renewalEvent.status === "missed",
+      });
+    } catch (err) {
+      console.error("[decide] recommendRenewalDecision failed:", err);
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -76,6 +176,60 @@ export default async function DecideNowPage({ params, searchParams }: Props) {
         noticeDeadline={data.renewalEvent.noticeDeadline}
         annualValueCents={annualValueCents}
       />
+
+      {/* Per-account playbook — what you did last time on this vendor.
+          This is the per-account moat: vendor memory put to use. */}
+      {lastDecisionOnVendor && (
+        <VendorPlaybookCard
+          lastDecision={{
+            vendorName: data.vendor.name,
+            productName: lastDecisionOnVendor.productName,
+            decision: lastDecisionOnVendor.decision,
+            decisionAt: lastDecisionOnVendor.decisionAt,
+            rationaleCodes: lastDecisionOnVendor.rationaleCodes,
+            negotiationLever: lastDecisionOnVendor.negotiationLever,
+            savedAnnualUsdCents: null, // joined separately on the vendor page
+          }}
+        />
+      )}
+
+      {/* Cross-account benchmark — the network-effects moat. Only renders
+          when at least MIN_BENCHMARK_SAMPLE customers share this vendor. */}
+      {benchmark && (
+        <VendorBenchmarkCard
+          vendorDisplayName={data.vendor.name}
+          benchmark={benchmark}
+        />
+      )}
+
+      {recommendation && (
+        <AIInsightCard
+          title="Recommended decision"
+          meta={recommendation.meta}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="capitalize">
+              {recommendation.recommendation.replace(/_/g, " ")}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              based on usage, value, and notice window
+            </span>
+          </div>
+          <p className="text-foreground">{recommendation.rationale}</p>
+          {recommendation.negotiationLevers.length > 0 && (
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                Levers worth trying
+              </div>
+              <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                {recommendation.negotiationLevers.map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </AIInsightCard>
+      )}
 
       <Card className="border-amber-200 bg-amber-50/50">
         <CardContent className="py-4 text-sm text-amber-900">
@@ -104,6 +258,32 @@ export default async function DecideNowPage({ params, searchParams }: Props) {
         vendorCancellationUrl={data.vendor.cancellationUrl}
         defaultCustomerName={user.fullName ?? undefined}
         defaultCompanyName={account.name}
+        suggestion={
+          recommendation
+            ? {
+                decision: recommendation.recommendation as
+                  | "renewed"
+                  | "renewed_with_adjustments"
+                  | "downgraded"
+                  | "cancelled",
+                decisionLabel: recommendation.recommendation.replace(
+                  /_/g,
+                  " "
+                ),
+                // The first lever the AI returns becomes the suggested
+                // prefill. AI-derived levers are human-readable free
+                // text, so we normalize to the enum shape. Unknown
+                // values fall through to be displayed but won't
+                // match an enum, in which case the dropdown stays "none".
+                suggestedLever: recommendation.negotiationLevers[0]
+                  ? recommendation.negotiationLevers[0]
+                      .toLowerCase()
+                      .replace(/\s+/g, "_")
+                  : null,
+                rationaleCodes: [],
+              }
+            : undefined
+        }
       />
     </div>
   );

@@ -7,6 +7,11 @@ import {
   vendorsTable,
 } from "@server/infrastructure/db/schema";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { tierFeatureDeniedResponse } from "@server/middleware/tier-feature-response";
+import {
+  requireTierFeature,
+  TierFeatureDeniedError,
+} from "@server/domain/billing/tier-features";
 import { rowsToCsv, type ExportRow } from "@server/infrastructure/csv/subscriptions-format";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +23,20 @@ export const dynamic = "force-dynamic";
  * with Content-Type=text/csv and Content-Disposition=attachment to trigger
  * the browser download. Server actions can't set arbitrary response headers.
  *
- * Tenant scoped via `accountId` on every query, like the rest of the app.
+ * Tenant scoped via `accountId` on every query, and gated by tier feature
+ * flag — CSV export is Starter+.
  */
 export async function GET() {
   const { account } = await getCurrentAccountAndUser();
+
+  try {
+    requireTierFeature(account.planTier, "csvImportExport");
+  } catch (err) {
+    if (err instanceof TierFeatureDeniedError) {
+      return tierFeatureDeniedResponse(err);
+    }
+    throw err;
+  }
 
   const rows = await db
     .select({

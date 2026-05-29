@@ -1,9 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { ForbiddenError, requireRole } from "@server/middleware/rbac";
+import { db } from "@server/infrastructure/db/client";
+import {
+  aiExtractedFieldsTable,
+  documentsTable,
+  subscriptionsTable,
+} from "@server/infrastructure/db/schema";
+import {
+  AUDIT_ACTIONS,
+  writeAuditLog,
+} from "@server/infrastructure/audit-log/writer";
 import {
   applyExtractedField,
   reviewExtractedField,
@@ -78,5 +89,101 @@ export async function reviewFieldAction(
   revalidatePath("/subscriptions");
   revalidatePath("/dashboard");
   revalidatePath("/action-queue");
+  return { ok: true };
+}
+
+const linkInputSchema = z.object({
+  documentId: z.string().uuid(),
+  subscriptionId: z.string().uuid(),
+});
+
+/**
+ * Link an uploaded document (and all of its pending extracted fields) to a
+ * subscription after-the-fact. Closes the "unlinked document dead-end" —
+ * before this, fields uploaded without a subscription pick stayed
+ * unappliable forever, no recovery path. Now the user picks a subscription
+ * from the review queue and the linkage cascades to every field row.
+ *
+ * RBAC + tenant scope + zod parsing match the surrounding actions.
+ */
+export async function linkDocumentToSubscriptionAction(
+  documentId: string,
+  subscriptionId: string
+): Promise<ReviewActionResult> {
+  const { account, user } = await getCurrentAccountAndUser();
+  try {
+    requireRole(user, "member");
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    throw err;
+  }
+
+  const parsed = linkInputSchema.safeParse({ documentId, subscriptionId });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid input" };
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // Tenant-scoped: document and subscription must both belong to this
+      // account. We verify in the same transaction as the link so a
+      // concurrent delete or transfer can't slip past the check.
+      const [doc] = await tx
+        .select({ id: documentsTable.id })
+        .from(documentsTable)
+        .where(
+          and(
+            eq(documentsTable.id, parsed.data.documentId),
+            eq(documentsTable.accountId, account.id)
+          )
+        )
+        .limit(1);
+      if (!doc) throw new Error("Document not found");
+
+      const [sub] = await tx
+        .select({ id: subscriptionsTable.id })
+        .from(subscriptionsTable)
+        .where(
+          and(
+            eq(subscriptionsTable.id, parsed.data.subscriptionId),
+            eq(subscriptionsTable.accountId, account.id)
+          )
+        )
+        .limit(1);
+      if (!sub) throw new Error("Subscription not found");
+
+      // Link the document and cascade to every pending field row so the
+      // user can immediately review + accept them.
+      await tx
+        .update(documentsTable)
+        .set({ subscriptionId: parsed.data.subscriptionId })
+        .where(eq(documentsTable.id, parsed.data.documentId));
+
+      await tx
+        .update(aiExtractedFieldsTable)
+        .set({ subscriptionId: parsed.data.subscriptionId })
+        .where(
+          and(
+            eq(aiExtractedFieldsTable.accountId, account.id),
+            eq(aiExtractedFieldsTable.documentId, parsed.data.documentId)
+          )
+        );
+
+      await writeAuditLog(tx, {
+        accountId: account.id,
+        actorUserId: user.id,
+        action: AUDIT_ACTIONS.documentUploaded,
+        target: { entityType: "document", entityId: parsed.data.documentId },
+        after: { subscriptionId: parsed.data.subscriptionId, linkedAt: new Date() },
+      });
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Couldn't link";
+    return { ok: false, error: msg };
+  }
+
+  revalidatePath("/review-queue");
+  revalidatePath("/documents");
+  revalidatePath("/subscriptions");
   return { ok: true };
 }

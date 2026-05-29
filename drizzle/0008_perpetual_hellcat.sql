@@ -1,0 +1,2 @@
+ALTER TABLE "integration" ADD COLUMN "token_lookup_hash" text;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "integration_token_lookup_hash_idx" ON "integration" USING btree ("token_lookup_hash");

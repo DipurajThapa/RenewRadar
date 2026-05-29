@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { tierFeatureDeniedResponse } from "@server/middleware/tier-feature-response";
+import {
+  requireTierFeature,
+  TierFeatureDeniedError,
+} from "@server/domain/billing/tier-features";
 import { listSavingsForAccount } from "@server/infrastructure/db/repositories/savings";
 import { formatCurrencyCsv } from "@server/infrastructure/csv/format-helpers";
 
@@ -19,6 +24,17 @@ const HEADERS = [
 
 export async function GET() {
   const { account } = await getCurrentAccountAndUser();
+
+  // Savings export is a Growth+ feature (savings ledger itself is Growth+).
+  try {
+    requireTierFeature(account.planTier, "savingsReports");
+  } catch (err) {
+    if (err instanceof TierFeatureDeniedError) {
+      return tierFeatureDeniedResponse(err);
+    }
+    throw err;
+  }
+
   const rows = await listSavingsForAccount(account.id, { limit: 2000 });
 
   const lines: string[] = [HEADERS.join(",")];

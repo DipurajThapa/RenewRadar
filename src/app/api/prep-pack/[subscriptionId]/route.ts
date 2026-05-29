@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
+import { tierFeatureDeniedResponse } from "@server/middleware/tier-feature-response";
+import {
+  requireTierFeature,
+  TierFeatureDeniedError,
+} from "@server/domain/billing/tier-features";
 import { getSubscriptionDetail } from "@server/infrastructure/db/repositories/subscriptions";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import {
@@ -12,19 +17,30 @@ import { renderPrepPackPdf } from "@server/infrastructure/pdf/prep-pack";
 export const dynamic = "force-dynamic";
 
 /**
- * Renewal Prep Pack PDF — gated by tenant scope.
+ * Renewal Prep Pack PDF — gated by tenant scope + paid-tier feature flag.
  *
  * Returns a `Content-Disposition: attachment` PDF for the requested
  * subscription, or 404 if the subscription doesn't belong to the caller's
- * account. The auth check uses the same `getCurrentAccountAndUser()`
- * resolver as the rest of the app, so demo mode and Clerk paths behave
- * identically.
+ * account. Free Forever accounts get a 403 with an upgrade-target body.
+ * The auth check uses the same `getCurrentAccountAndUser()` resolver as the
+ * rest of the app, so demo mode and Clerk paths behave identically.
  */
 export async function GET(
   _req: Request,
   { params }: { params: { subscriptionId: string } }
 ): Promise<NextResponse> {
   const { account } = await getCurrentAccountAndUser();
+
+  // Feature-tier gate (Starter+). Hidden-button defense-in-depth.
+  try {
+    requireTierFeature(account.planTier, "renewalPrepPack");
+  } catch (err) {
+    if (err instanceof TierFeatureDeniedError) {
+      return tierFeatureDeniedResponse(err);
+    }
+    throw err;
+  }
+
   const detail = await getSubscriptionDetail(account.id, params.subscriptionId);
   if (!detail) {
     return new NextResponse("Not found", { status: 404 });

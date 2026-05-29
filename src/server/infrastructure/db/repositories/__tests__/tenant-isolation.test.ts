@@ -11,7 +11,7 @@
  * `coverage` test at the bottom enforces that we don't forget.
  */
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -731,12 +731,14 @@ describe("queries/invitations", () => {
       actorUserId: ids.accountA.userId,
       email: "invitee-a@example.test",
       role: "member",
+      accountPlanTier: "starter",
     });
     const b = await createInvitation({
       accountId: ids.accountB.id,
       actorUserId: ids.accountB.userId,
       email: "invitee-b@example.test",
       role: "admin",
+      accountPlanTier: "starter",
     });
 
     const aList = await listPendingInvitations(ids.accountA.id);
@@ -949,9 +951,169 @@ describe("queries/audit-log", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// spend ingestion queries (wedge PoC)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("queries/spend", () => {
+  async function seedSpendFor(accountId: string, merchant: string) {
+    const { encryptJson } = await import(
+      "@server/infrastructure/crypto/envelope"
+    );
+    const { db } = await import("@server/infrastructure/db/client");
+    const {
+      recurringChargesTable,
+      spendConnectionsTable,
+      spendTransactionsTable,
+    } = await import("@server/infrastructure/db/schema");
+    const [conn] = await db
+      .insert(spendConnectionsTable)
+      .values({
+        accountId,
+        kind: "fixture",
+        configCiphertext: encryptJson(accountId, { datasetId: "default" }),
+        status: "active",
+      })
+      .returning();
+    await db.insert(spendTransactionsTable).values({
+      accountId,
+      connectionId: conn!.id,
+      externalId: `${merchant}-1`,
+      rawMerchant: merchant,
+      normalizedMerchant: merchant.toLowerCase(),
+      amountCents: 8000,
+      currency: "USD",
+      chargedOn: "2026-05-01",
+      status: "ingested",
+    });
+    const [charge] = await db
+      .insert(recurringChargesTable)
+      .values({
+        accountId,
+        connectionId: conn!.id,
+        normalizedMerchant: merchant.toLowerCase(),
+        suggestedVendorName: merchant,
+        detectedCycle: "monthly",
+        typicalAmountCents: 8000,
+        latestAmountCents: 8000,
+        confidence: 90,
+        sampleSize: 6,
+        firstChargedOn: "2025-12-01",
+        lastChargedOn: "2026-05-01",
+        status: "detected",
+      })
+      .returning();
+    return { connectionId: conn!.id, chargeId: charge!.id };
+  }
+
+  it("detected recurring charges + transactions never cross the account boundary", async () => {
+    const {
+      listDetectedRecurringCharges,
+      getRecurringCharge,
+      listSpendTransactionsForDetection,
+    } = await import("@server/infrastructure/db/repositories/spend");
+
+    const a = await seedSpendFor(ids.accountA.id, "AcmeA");
+    const b = await seedSpendFor(ids.accountB.id, "AcmeB");
+
+    const aCharges = await listDetectedRecurringCharges(ids.accountA.id);
+    expect(aCharges).toHaveLength(1);
+    expect(aCharges[0]!.suggestedVendorName).toBe("AcmeA");
+
+    // A cannot read B's charge by id
+    expect(await getRecurringCharge(ids.accountA.id, b.chargeId)).toBeNull();
+    expect(await getRecurringCharge(ids.accountB.id, a.chargeId)).toBeNull();
+
+    // A's detection read for B's connection returns nothing
+    const crossTxns = await listSpendTransactionsForDetection(
+      ids.accountA.id,
+      b.connectionId
+    );
+    expect(crossTxns).toHaveLength(0);
+  });
+
+  it("getConfirmedChargeForSubscription / listPositiveTransactionsForMerchant never cross the boundary", async () => {
+    const {
+      getConfirmedChargeForSubscription,
+      listPositiveTransactionsForMerchant,
+    } = await import("@server/infrastructure/db/repositories/spend");
+    const { db } = await import("@server/infrastructure/db/client");
+    const { recurringChargesTable } = await import(
+      "@server/infrastructure/db/schema"
+    );
+
+    const b = await seedSpendFor(ids.accountB.id, "AcmeB");
+    // Link B's charge to B's seeded subscription (status confirmed).
+    await db
+      .update(recurringChargesTable)
+      .set({ status: "confirmed", subscriptionId: ids.accountB.subscriptionId });
+
+    // A asking for B's subscription's confirmed charge gets nothing.
+    expect(
+      await getConfirmedChargeForSubscription(
+        ids.accountA.id,
+        ids.accountB.subscriptionId
+      )
+    ).toBeNull();
+
+    // A reading B's connection/merchant transactions gets nothing.
+    const crossA = await listPositiveTransactionsForMerchant(
+      ids.accountA.id,
+      b.connectionId,
+      "acmeb",
+      "USD"
+    );
+    expect(crossA).toHaveLength(0);
+
+    // B legitimately sees its own.
+    const ownB = await listPositiveTransactionsForMerchant(
+      ids.accountB.id,
+      b.connectionId,
+      "acmeb",
+      "USD"
+    );
+    expect(ownB.length).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // mutations — must throw when crossing the account boundary
 // ─────────────────────────────────────────────────────────────────────────
 // (legacy section header retained; describe block opens below)
+
+describe("queries/renewal-notice-drafts", () => {
+  it("never returns another account's notice draft", async () => {
+    const { getLatestNoticeDraft, listNoticeDrafts } = await import(
+      "@server/infrastructure/db/repositories/renewal-notice-drafts"
+    );
+    const { db } = await import("@server/infrastructure/db/client");
+    const { renewalNoticeDraftsTable } = await import(
+      "@server/infrastructure/db/schema"
+    );
+
+    // Seed a draft on account B's subscription.
+    await db.insert(renewalNoticeDraftsTable).values({
+      accountId: ids.accountB.id,
+      subscriptionId: ids.accountB.subscriptionId,
+      status: "draft",
+      subject: "B internal notice",
+      bodyText: "INTERNAL MEMO for B",
+      createdByUserId: ids.accountB.userId,
+    });
+
+    // A asking for B's subscription's draft gets nothing.
+    expect(
+      await getLatestNoticeDraft(ids.accountA.id, ids.accountB.subscriptionId)
+    ).toBeNull();
+    expect(
+      await listNoticeDrafts(ids.accountA.id, ids.accountB.subscriptionId)
+    ).toHaveLength(0);
+
+    // B sees its own.
+    expect(
+      await getLatestNoticeDraft(ids.accountB.id, ids.accountB.subscriptionId)
+    ).not.toBeNull();
+  });
+});
 
 describe("mutations/subscriptions cross-account safety", () => {
   it("updateSubscription throws when accountId does not match the row", async () => {
@@ -997,7 +1159,7 @@ describe("coverage", () => {
       process.cwd(),
       "src/server/infrastructure/db/repositories/__tests__/tenant-isolation.test.ts"
     );
-    const selfText = require("node:fs").readFileSync(selfPath, "utf8") as string;
+    const selfText = readFileSync(selfPath, "utf8");
 
     const missing: string[] = [];
     for (const f of moduleFiles) {

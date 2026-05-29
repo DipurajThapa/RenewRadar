@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   aiExtractedFieldsTable,
@@ -7,6 +7,28 @@ import {
   vendorsTable,
 } from "@server/infrastructure/db/schema";
 import type { Document } from "@server/infrastructure/db/schema";
+
+/**
+ * Sum of `sizeBytes` for every document on the account. Used by the upload
+ * path to enforce the per-tier storage cap, and by the system-health page
+ * to render % consumed.
+ *
+ * Bytes are stored at upload time (immutable); a soft-delete future would
+ * subtract from this — for now docs are hard-removable via the docs/
+ * actions, which means deleting a doc frees its bytes against the cap.
+ */
+export async function getTotalStorageBytes(
+  accountId: string
+): Promise<number> {
+  const [row] = await db
+    .select({
+      bytes: sql<number>`coalesce(sum(${documentsTable.sizeBytes}), 0)::bigint`,
+    })
+    .from(documentsTable)
+    .where(eq(documentsTable.accountId, accountId));
+  // postgres returns bigint as string; coerce safely.
+  return Number(row?.bytes ?? 0);
+}
 
 export type DocumentRow = Document & {
   vendorName: string | null;

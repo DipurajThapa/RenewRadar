@@ -117,14 +117,26 @@ function SubscriptionListItem({ sub }: { sub: SubscriptionRow }) {
 
         <ChevronRight className="h-4 w-4 text-muted-foreground hidden md:block" />
 
-        {/* Mobile inline summary */}
-        <div className="md:hidden flex items-center justify-between text-xs text-muted-foreground mt-1">
-          <span>
-            {sub.totalSeats} seats · {formatCurrency(annualCost)}/yr
-          </span>
-          <span className={cn("font-medium", noticeTone.text)}>
-            Notice in {noticeDays}d
-          </span>
+        {/* Mobile inline summary — replaces every hidden column at one go
+            so the row still tells the story without horizontal scroll. */}
+        <div className="md:hidden mt-2 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <Badge
+              variant={getStatusBadgeVariant(sub.status)}
+              className="capitalize"
+            >
+              {sub.status.replace(/_/g, " ")}
+            </Badge>
+            <span className="tabular-nums font-medium">
+              {formatCurrency(annualCost)}/yr
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{sub.totalSeats} seats</span>
+            <span className={cn("font-medium tabular-nums", noticeTone.text)}>
+              Notice in {noticeDays}d
+            </span>
+          </div>
         </div>
       </div>
     </Link>

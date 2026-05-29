@@ -8,6 +8,8 @@ import {
   listVendorEvents,
 } from "@server/infrastructure/db/repositories/vendor-memory";
 import { listComplianceArtifactsForVendor } from "@server/infrastructure/db/repositories/compliance";
+import { getInsightProvider } from "@server/infrastructure/ai";
+import { getVendorBenchmark } from "@server/application/vendor-benchmarks";
 import {
   Card,
   CardContent,
@@ -15,6 +17,8 @@ import {
   CardTitle,
 } from "@ui/components/primitives/card";
 import { Badge } from "@ui/components/primitives/badge";
+import { AIInsightCard } from "@ui/components/shared/ai-insight-card";
+import { VendorBenchmarkCard } from "@ui/components/shared/vendor-benchmark-card";
 import { formatCurrency, formatDate } from "@shared/utils";
 import {
   RATIONALE_LABEL,
@@ -22,6 +26,8 @@ import {
 } from "@server/domain/vendor-memory/event-labels";
 import { VendorTimeline } from "@ui/features/vendor-memory/vendor-timeline";
 import { ComplianceArtifactsCard } from "@ui/features/vendor-memory/compliance-artifacts-card";
+import { VendorConnectionCard } from "@ui/features/vendor-memory/vendor-connection-card";
+import { findMatchingVendorOrg } from "@server/application/vendor-portal/connections";
 
 export const dynamic = "force-dynamic";
 
@@ -34,15 +40,72 @@ export default async function VendorIntelligencePage({
   const vendor = await getVendor(account.id, params.id);
   if (!vendor) notFound();
 
-  const [intelligence, events, artifacts] = await Promise.all([
+  const [intelligence, events, artifacts, benchmark] = await Promise.all([
     getVendorIntelligence(account.id, vendor.id),
     listVendorEvents(account.id, vendor.id, { limit: 200 }),
     listComplianceArtifactsForVendor(account.id, vendor.id),
+    getVendorBenchmark(vendor.name).catch((err) => {
+      console.error("[vendors/[id]] benchmark failed:", err);
+      return null;
+    }),
   ]);
+
+  // T4.10 Slice 3 — does a verified vendor_org match this vendor?
+  const connectionMatch = await findMatchingVendorOrg({
+    accountId: account.id,
+    customerVendorId: vendor.id,
+  }).catch(() => null);
 
   const histogramSorted = Object.entries(intelligence.rationaleHistogram)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
+
+  // Rough "years tracked" from the oldest vendor event. Heuristic — good
+  // enough for the AI narrative without an extra query.
+  const oldestEvent = events[events.length - 1];
+  const yearsTracked = oldestEvent
+    ? Math.max(
+        0,
+        (Date.now() - new Date(oldestEvent.occurredAt).getTime()) /
+          (365.25 * 24 * 60 * 60 * 1000)
+      )
+    : 0;
+
+  const expiringComplianceCount = artifacts.filter((a) => {
+    if (!a.expiresAt) return false;
+    const days =
+      (new Date(a.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    return days >= 0 && days <= 60;
+  }).length;
+
+  const lastDecision = intelligence.lastDecisions[0];
+  let aiSummary: Awaited<
+    ReturnType<
+      ReturnType<typeof getInsightProvider>["summarizeVendorIntelligence"]
+    >
+  > | null = null;
+  try {
+    const ai = getInsightProvider();
+    aiSummary = await ai.summarizeVendorIntelligence({
+      vendorName: vendor.name,
+      yearsTracked,
+      activeSubscriptions: intelligence.subscriptionCount,
+      cancelledSubscriptions: intelligence.lastDecisions.filter(
+        (d) => d.decision === "cancelled"
+      ).length,
+      totalSavedAnnualCents: intelligence.totalSavingsLifetimeCents,
+      averagePriceChangePct: intelligence.averagePriceChangePct,
+      lastDecisionLabel: lastDecision?.decision ?? null,
+      lastDecisionDate:
+        lastDecision?.decisionAt
+          ? formatDate(lastDecision.decisionAt)
+          : null,
+      complianceArtifacts: artifacts.length,
+      expiringComplianceArtifacts: expiringComplianceCount,
+    });
+  } catch (err) {
+    console.error("[vendors/[id]] summarizeVendorIntelligence failed:", err);
+  }
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -71,6 +134,41 @@ export default async function VendorIntelligencePage({
           </p>
         )}
       </header>
+
+      {connectionMatch && (
+        <VendorConnectionCard
+          customerVendorId={vendor.id}
+          vendorOrgId={connectionMatch.vendorOrg.id}
+          vendorDisplayName={connectionMatch.vendorOrg.displayName}
+          matchedBy={connectionMatch.matchedBy}
+          status={connectionMatch.connection?.status ?? "none"}
+        />
+      )}
+
+      {aiSummary && (
+        <AIInsightCard
+          title="Vendor intelligence"
+          meta={aiSummary.meta}
+        >
+          <p className="text-foreground">{aiSummary.summary}</p>
+          {aiSummary.highlights.length > 0 && (
+            <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+              {aiSummary.highlights.map((h, i) => (
+                <li key={i}>{h}</li>
+              ))}
+            </ul>
+          )}
+        </AIInsightCard>
+      )}
+
+      {/* Cross-account benchmark — only renders when at least 3 customers
+          share this vendor. Network-effects moat. */}
+      {benchmark && (
+        <VendorBenchmarkCard
+          vendorDisplayName={vendor.name}
+          benchmark={benchmark}
+        />
+      )}
 
       {/* Intelligence summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

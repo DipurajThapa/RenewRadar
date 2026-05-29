@@ -1,37 +1,29 @@
-import Link from "next/link";
+import { SettingsNav } from "@ui/features/settings/settings-nav";
+import { PageHeader } from "@ui/components/shared/page-header";
 
-const SECTIONS = [
-  { href: "/settings/account", label: "Account" },
-  { href: "/settings/team", label: "Team" },
-  { href: "/settings/notifications", label: "Notifications" },
-  { href: "/settings/integrations", label: "Integrations" },
-  { href: "/settings/billing", label: "Plan & Billing" },
-  { href: "/settings/audit", label: "Audit log" },
-] as const;
-
+/**
+ * Settings shell — a left-rail sub-nav next to the panel content.
+ *
+ * The PageHeader sets the title at a generous size so the settings space
+ * reads as a peer to other top-level pages, not a "nested" UI.
+ */
 export default function SettingsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold mb-6">Settings</h1>
+    <div className="max-w-6xl space-y-8">
+      <PageHeader>
+        <PageHeader.Title>Settings</PageHeader.Title>
+        <PageHeader.Description>
+          Account, team, notifications, integrations, billing, and audit log.
+        </PageHeader.Description>
+      </PageHeader>
 
-      <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-6">
-        <nav className="space-y-1">
-          {SECTIONS.map((section) => (
-            <Link
-              key={section.href}
-              href={section.href}
-              className="block px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors"
-            >
-              {section.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div>{children}</div>
+      <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-8">
+        <SettingsNav />
+        <div className="min-w-0 space-y-6">{children}</div>
       </div>
     </div>
   );

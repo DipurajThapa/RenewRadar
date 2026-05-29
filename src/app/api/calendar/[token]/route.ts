@@ -8,6 +8,10 @@ import {
 } from "@server/infrastructure/db/schema";
 import { findAccountByIcsToken } from "@server/infrastructure/db/repositories/integrations";
 import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
+import {
+  getRateLimit,
+  ICS_FEED_POLICY,
+} from "@server/infrastructure/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +33,28 @@ export async function GET(
   const token = (params.token ?? "").replace(/\.ics$/, "");
   if (!token || token.length < 16) {
     return new NextResponse("Not found", { status: 404 });
+  }
+
+  // Rate limit by token. Caps calendar-client polling at 30/min/token and
+  // makes hash-bruteforcing the token surface uncomfortably slow. Fails-
+  // open on adapter glitches — better to risk an extra calendar fetch
+  // than to break a real customer's Outlook sync because of a transient
+  // rate-limit error.
+  try {
+    const decision = await getRateLimit().check(
+      `ics-feed:${token}`,
+      ICS_FEED_POLICY
+    );
+    if (!decision.allowed) {
+      return new NextResponse("Too many requests", {
+        status: 429,
+        headers: {
+          "Retry-After": String(decision.resetSeconds),
+        },
+      });
+    }
+  } catch (err) {
+    console.error("[ics-feed] rate limit check failed:", err);
   }
 
   const found = await findAccountByIcsToken(token);

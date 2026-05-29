@@ -127,6 +127,11 @@ export async function listExtractedFieldsForDocument(
  * Sum of `pagesCharged` for runs in the current calendar month. Used to
  * enforce the tier's `aiExtractionPagesPerMonth` cap before kicking off a
  * new run.
+ *
+ * Counts BOTH `running` and `succeeded` runs — running rows are
+ * pre-reserved by `reserveAiPagesBudget` so the race condition where 50
+ * concurrent extracts all read 0 and bypass the cap can no longer happen.
+ * A failed run is excluded (it didn't consume the budget).
  */
 export async function getMonthlyPagesUsed(accountId: string): Promise<number> {
   const monthStart = new Date();
@@ -141,7 +146,8 @@ export async function getMonthlyPagesUsed(accountId: string): Promise<number> {
     .where(
       and(
         eq(aiExtractionRunsTable.accountId, accountId),
-        gte(aiExtractionRunsTable.startedAt, monthStart)
+        gte(aiExtractionRunsTable.startedAt, monthStart),
+        sql`${aiExtractionRunsTable.status} in ('running', 'succeeded')`
       )
     );
   return rows[0]?.pages ?? 0;

@@ -1,11 +1,37 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { MarketingNav } from "@ui/features/marketing/marketing-nav";
-import { MarketingFooter } from "@ui/features/marketing/marketing-footer";
+import { HeroBanner } from "@ui/components/shared/hero-banner";
+import {
+  ArticleJsonLd,
+  BreadcrumbJsonLd,
+} from "@ui/components/seo/structured-data";
+import { LeadCaptureForm } from "@ui/features/marketing/lead-capture-form";
+import { Card } from "@ui/components/primitives/card";
 
-export const metadata = {
-  title: "Security & privacy — Renewal Radar",
+/**
+ * Page-level publishing dates. Both EEAT and GEO grading look for visible
+ * "last reviewed" markers — Google specifically prioritises freshness on
+ * security/legal content, and LLMs prefer to quote pages with declared
+ * revision dates.
+ *
+ * Bump `LAST_REVIEWED` on every meaningful edit; bump `PUBLISHED` once.
+ */
+const PUBLISHED = "2026-05-01";
+const LAST_REVIEWED = "2026-05-28";
+
+export const metadata: Metadata = {
+  // Title template in the root layout appends " · Renewal Radar".
+  title: "Security & privacy",
   description:
-    "How Renewal Radar protects contract data: encryption, tenant isolation, subprocessors, retention, and deletion.",
+    "How Renewal Radar protects contract data: AES-256 encryption, tenant isolation enforced per request, transparent subprocessors, configurable retention, and a 72-hour breach notification commitment.",
+  alternates: { canonical: "/security" },
+  openGraph: {
+    title: "Security & privacy — Renewal Radar",
+    description:
+      "Encryption, isolation, retention, and incident response — documented in plain language.",
+    url: "/security",
+    type: "article",
+  },
 };
 
 const SECTIONS = [
@@ -21,27 +47,46 @@ const SECTIONS = [
 export default function SecurityPage() {
   return (
     <>
-      <MarketingNav />
-      <main className="max-w-5xl mx-auto px-6 py-12">
-        <header className="mb-10">
-          <h1 className="text-3xl font-bold">Security & privacy</h1>
-          <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-            We're a paid SaaS for IT / Ops teams. Your contract data is the
-            sharpest thing we hold, and the burden of protecting it is on us.
-            This page documents how we do that and where the gaps are.
-          </p>
-          <p className="text-xs text-muted-foreground mt-3">
-            Last updated 2026-05-28. Material changes go in the{" "}
-            <Link
-              href="/settings/audit"
-              className="underline underline-offset-4"
-            >
-              audit log
-            </Link>{" "}
-            for paying customers.
-          </p>
-        </header>
-
+      <HeroBanner
+        eyebrow="Security & privacy"
+        title="Built so a single team can run it"
+        description="Your contract data is the sharpest thing we hold. This page documents how we protect it — encryption, tenant isolation, retention, incident response — and where the gaps are."
+        compact
+        metaBelow={
+          <div className="space-y-1">
+            <div>
+              <span className="font-medium text-foreground">Last reviewed</span>{" "}
+              <time dateTime={LAST_REVIEWED}>{LAST_REVIEWED}</time> · Published{" "}
+              <time dateTime={PUBLISHED}>{PUBLISHED}</time> · Reviewed by the
+              Renewal Radar engineering team
+            </div>
+            <div>
+              Material changes are logged in the{" "}
+              <Link
+                href="/settings/audit"
+                className="underline underline-offset-4 text-foreground"
+              >
+                customer audit log
+              </Link>
+              .
+            </div>
+          </div>
+        }
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", href: "/" },
+          { name: "Security & privacy", href: "/security" },
+        ]}
+      />
+      <ArticleJsonLd
+        headline="Security & privacy at Renewal Radar"
+        description="How Renewal Radar protects customer contract data: encryption, tenant isolation, subprocessors, retention, and incident response."
+        datePublished={PUBLISHED}
+        dateModified={LAST_REVIEWED}
+        url="/security"
+      />
+      <main className="max-w-5xl mx-auto px-5 lg:px-8 pb-20">
         <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-10">
           <nav className="space-y-1 text-sm">
             {SECTIONS.map((s) => (
@@ -211,8 +256,37 @@ export default function SecurityPage() {
             </section>
           </article>
         </div>
+
+        {/*
+         * Security-questionnaire help: many prospects need to forward our
+         * security posture to their compliance team. Capturing them here
+         * lets us send the SOC2 / vendor questionnaire on request.
+         */}
+        <Card className="mt-16 p-6 sm:p-8 border-primary/15 shadow-card-lg">
+          <div className="grid md:grid-cols-[1fr_1.1fr] gap-8 lg:gap-12 items-start">
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-primary-strong font-semibold">
+                Need more for review?
+              </div>
+              <h2 className="font-display text-2xl font-semibold tracking-tight">
+                Get our security packet
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                We send a SOC 2 readiness summary, our subprocessor list,
+                and a pre-filled CAIQ-Lite questionnaire on request. We
+                reply within one business day.
+              </p>
+            </div>
+            <LeadCaptureForm
+              source="marketing_security_newsletter"
+              intent="other"
+              submitLabel="Send me the packet"
+              successHeading="Packet on the way."
+              successMessage="Check your inbox within one business day. If we can answer a question now, just reply to that email."
+            />
+          </div>
+        </Card>
       </main>
-      <MarketingFooter />
     </>
   );
 }

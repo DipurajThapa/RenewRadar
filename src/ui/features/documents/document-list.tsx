@@ -72,16 +72,28 @@ export function DocumentList({ documents }: { documents: DocumentRow[] }) {
               </div>
 
               <div>
-                <StatusBadge label={status.label} tone={status.tone} />
-                {doc.textExtractionStatus === "failed" &&
-                  doc.textExtractionError && (
-                    <div className="text-xs text-red-700 mt-1 inline-flex items-start gap-1">
-                      <AlertTriangle className="h-3 w-3 mt-0.5" />
-                      <span className="truncate" title={doc.textExtractionError}>
-                        {doc.textExtractionError}
-                      </span>
-                    </div>
-                  )}
+                {/* Ready + an error message = the OCR succeeded but the
+                    document had no readable text (image-only / encrypted).
+                    Show a "Needs attention" amber badge instead of green. */}
+                {doc.textExtractionStatus === "ready" && doc.textExtractionError ? (
+                  <StatusBadge label="Needs attention" tone="warning" />
+                ) : (
+                  <StatusBadge label={status.label} tone={status.tone} />
+                )}
+                {doc.textExtractionError && (
+                  <div
+                    className={`text-xs mt-1 inline-flex items-start gap-1 ${
+                      doc.textExtractionStatus === "failed"
+                        ? "text-red-700"
+                        : "text-amber-800"
+                    }`}
+                  >
+                    <AlertTriangle className="h-3 w-3 mt-0.5" />
+                    <span className="truncate" title={doc.textExtractionError}>
+                      {doc.textExtractionError}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="text-xs text-muted-foreground tabular-nums">

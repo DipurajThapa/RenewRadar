@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@ui/components/primitives/card";
+import { PageHeader } from "@ui/components/shared/page-header";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   listRenewalsInRange,
@@ -18,13 +19,13 @@ export default async function RenewalsPage({
   const rows = await listRenewalsInRange(account.id, range);
 
   return (
-    <div className="space-y-6 max-w-7xl">
-      <header>
-        <h1 className="text-2xl font-semibold">Renewal Calendar</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Forward view of all subscription renewals over the next {range} days.
-        </p>
-      </header>
+    <div className="space-y-8">
+      <PageHeader>
+        <PageHeader.Title>Renewal calendar</PageHeader.Title>
+        <PageHeader.Description>
+          Forward view of every subscription renewal over the next {range} days.
+        </PageHeader.Description>
+      </PageHeader>
 
       {rows.length === 0 ? (
         <Card>

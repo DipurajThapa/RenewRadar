@@ -3,9 +3,15 @@ import Link from "next/link";
 import { Card, CardContent } from "@ui/components/primitives/card";
 import { Button } from "@ui/components/primitives/button";
 import { getInvitationByToken } from "@server/infrastructure/db/repositories/invitations";
+import { countActiveUsers } from "@server/infrastructure/db/repositories/users";
+import { countPendingInvitations } from "@server/infrastructure/db/repositories/invitations";
 import { db } from "@server/infrastructure/db/client";
 import { eq } from "drizzle-orm";
 import { accountsTable } from "@server/infrastructure/db/schema";
+import {
+  TIER_DEFINITIONS,
+  type PlanTier,
+} from "@server/domain/billing/tier-definitions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +34,28 @@ export default async function AcceptInvitationPage({
     redirect("/?invitation=invalid");
   }
 
-  // Resolve the account name for display.
+  // Resolve the account name and plan tier for display + cap pre-check.
   const [account] = await db
-    .select({ name: accountsTable.name })
+    .select({ name: accountsTable.name, planTier: accountsTable.planTier })
     .from(accountsTable)
     .where(eq(accountsTable.id, invitation.accountId));
+
+  // Pre-check seat cap. If the inviting account no longer has room, show a
+  // clear "your inviter needs to upgrade" message instead of letting the
+  // invitee sign up and then get stuck at setup-pending. This is the
+  // friendly counterpart to the hard cap check in `provisionNewUser`.
+  const maxUsers = account
+    ? TIER_DEFINITIONS[account.planTier as PlanTier].limits.maxUsers
+    : Number.POSITIVE_INFINITY;
+  let seatsAvailable = true;
+  if (Number.isFinite(maxUsers)) {
+    const [activeUsers, pendingInvites] = await Promise.all([
+      countActiveUsers(invitation.accountId),
+      countPendingInvitations(invitation.accountId),
+    ]);
+    // Subtract self (this invitation row is already in pendingInvites)
+    seatsAvailable = activeUsers + pendingInvites <= maxUsers;
+  }
 
   const signUpHref = `/sign-up?invitation_token=${
     invitation.token
@@ -55,9 +78,26 @@ export default async function AcceptInvitationPage({
             Link expires {invitation.expiresAt.toLocaleDateString("en-US")} ·
             Role: <span className="capitalize">{invitation.role}</span>
           </p>
+          {!seatsAvailable && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-left">
+              <p className="text-sm font-medium text-amber-900">
+                This workspace is at its seat limit
+              </p>
+              <p className="text-xs text-amber-800 mt-1">
+                Your inviter needs to upgrade their Renewal Radar plan before
+                you can accept. Ask them to bump the plan in Settings →
+                Billing and try this link again.
+              </p>
+            </div>
+          )}
           <div className="pt-2">
-            <Button asChild>
-              <Link href={signUpHref}>Accept and create my account</Link>
+            <Button asChild disabled={!seatsAvailable}>
+              <Link
+                href={seatsAvailable ? signUpHref : "#"}
+                aria-disabled={!seatsAvailable}
+              >
+                Accept and create my account
+              </Link>
             </Button>
           </div>
         </CardContent>

@@ -1,29 +1,42 @@
 /**
- * Heuristic AI extraction stub.
+ * Heuristic AI provider — covers both the extraction interface and the
+ * insight interface. Used in dev + tests until ANTHROPIC_API_KEY is
+ * provisioned. The production swap is the Anthropic provider — same two
+ * interfaces, real Claude calls.
  *
- * Used in dev + tests until ANTHROPIC_API_KEY is provisioned. The
- * production swap is `anthropic-provider.ts` — same interface, real Claude
- * Sonnet 4.6 call with the structured-extraction prompt.
+ * Extraction stack:
+ *   - Regex pattern matching for the six canonical fields.
+ *   - Every match comes back with the typed parsedValueJson, a verbatim
+ *     evidenceQuote, page number when pageBreaks are provided, and a
+ *     confidence reflecting pattern strength.
+ *   - Conservative: when a match is weak or ambiguous, we return nothing
+ *     rather than guess. Mirrors the "evidence-or-reject" binding principle.
  *
- * This stub uses regex pattern matching against the document text to find
- * the six canonical fields. Every successful match comes back with:
- *   - the typed parsedValueJson
- *   - a verbatim evidenceQuote pulled from the source
- *   - a page number when pageBreaks are provided
- *   - a confidence score that reflects pattern strength
+ * Insight stack:
+ *   - Pure deterministic templates over the structured input. No randomness,
+ *     no string interpolation that depends on the time of day. Same input
+ *     always produces same output so tests can assert verbatim.
+ *   - Each insight method emits a confidencePct that reflects the strength
+ *     of the underlying signal (e.g. a missed deadline = 95; a vague
+ *     intermediate risk score = 60).
  *
- * The stub is intentionally conservative: when a match is weak or ambiguous,
- * it returns nothing rather than a guess. That mirrors the production
- * contract — "evidence-or-reject" is the binding principle.
- *
- * Cost is 0 (no API call); pagesCharged tracks the page count anyway so the
+ * Cost is always 0 (no API call). pagesCharged tracks the page count so
  * usage UX is realistic in dev.
  */
 import type {
+  AIInsightProvider,
+  DecisionRecommendationInput,
+  DecisionRecommendationOutput,
   ExtractedFieldDraft,
   ExtractionInput,
   ExtractionProvider,
   ExtractionResult,
+  RiskExplainerInput,
+  RiskExplainerOutput,
+  SavingsNarrativeInput,
+  SavingsNarrativeOutput,
+  VendorIntelligenceInput,
+  VendorIntelligenceOutput,
 } from "./types";
 
 const PROVIDER_NAME = "heuristic-stub";
@@ -31,10 +44,14 @@ const MODEL = "heuristic-v1";
 const PROMPT_VERSION = "v1.0";
 const MAX_QUOTE_LEN = 300;
 
-export class HeuristicStubProvider implements ExtractionProvider {
+export class HeuristicStubProvider
+  implements ExtractionProvider, AIInsightProvider
+{
   readonly providerName = PROVIDER_NAME;
   readonly model = MODEL;
   readonly promptVersion = PROMPT_VERSION;
+
+  // ─── Extraction ────────────────────────────────────────────────────────
 
   async extract(input: ExtractionInput): Promise<ExtractionResult> {
     const fields: ExtractedFieldDraft[] = [];
@@ -57,7 +74,14 @@ export class HeuristicStubProvider implements ExtractionProvider {
     const cancellation = extractCancellationMethod(input);
     if (cancellation) fields.push(cancellation);
 
-    const pagesCharged = Math.max(1, input.pageBreaks?.length ?? 1);
+    // pagesCharged — prefer the explicit pageCount from the OCR layer; fall
+    // back to `pageBreaks.length + 1` (correct for PDFs because pageBreaks
+    // is the list of N-1 cumulative offsets between N pages); finally clamp
+    // to 1 so plain-text/DOCX never appears free.
+    const pagesCharged =
+      typeof input.pageCount === "number" && input.pageCount > 0
+        ? input.pageCount
+        : Math.max(1, (input.pageBreaks?.length ?? 0) + 1);
 
     return {
       meta: {
@@ -70,9 +94,343 @@ export class HeuristicStubProvider implements ExtractionProvider {
       fields,
     };
   }
+
+  // ─── Insights ──────────────────────────────────────────────────────────
+
+  async explainRisk(input: RiskExplainerInput): Promise<RiskExplainerOutput> {
+    const dollars = Math.round(input.annualValueCents / 100);
+    const dollarsFmt = formatDollars(dollars);
+
+    let headline: string;
+    let rationale: string;
+    const suggestedActions: string[] = [];
+
+    if (input.isMissed) {
+      headline = `Notice window for ${input.productName} has passed`;
+      rationale = `The notice deadline closed ${Math.abs(input.daysUntilNoticeDeadline)} days ago. ${
+        input.autoRenew
+          ? `Because ${input.vendorName} auto-renews, the contract has already rolled.`
+          : `${input.vendorName} does not auto-renew, but the agreed window to opt out is closed.`
+      } Re-engage the vendor directly to discuss off-cycle terms.`;
+      suggestedActions.push(
+        `Email ${input.vendorName} to confirm next steps`,
+        "Log a renewal decision so the ledger reflects what actually happened"
+      );
+    } else if (input.riskBand === "high") {
+      const why: string[] = [];
+      if (input.components.urgency >= 50) why.push("the notice window is short");
+      if (input.components.value >= 20)
+        why.push(`the contract is large (${dollarsFmt}/yr)`);
+      if (input.autoRenew) why.push("auto-renew is on");
+      headline = `${input.productName} renewal needs attention`;
+      rationale = `Score ${input.riskScore} (high) because ${joinWithAnd(why)}. ${
+        input.daysUntilNoticeDeadline > 0
+          ? `You have ${input.daysUntilNoticeDeadline} days to decide.`
+          : "The notice window is at or past its end."
+      }`;
+      suggestedActions.push(
+        "Open the decide-now page and pick an action",
+        input.autoRenew
+          ? `Confirm whether ${input.vendorName} will pause auto-renew during negotiation`
+          : "Confirm the renewal terms with the vendor in writing"
+      );
+    } else if (input.riskBand === "medium") {
+      headline = `${input.productName} renewal — review this week`;
+      rationale = `Score ${input.riskScore} (medium). The deadline is ${input.daysUntilNoticeDeadline} days out and the value is ${dollarsFmt}/yr. ${
+        input.autoRenew
+          ? "Auto-renew is on, so quiet inaction means roll-over."
+          : "Auto-renew is off, so a missed deadline means lapse."
+      }`;
+      suggestedActions.push(
+        "Confirm usage with the product owner before deciding",
+        "Pull the latest invoice to check for price drift"
+      );
+    } else {
+      headline = `${input.productName} renewal — low urgency`;
+      rationale = `Score ${input.riskScore} (low). ${input.daysUntilNoticeDeadline} days to the notice deadline, ${dollarsFmt}/yr in contract value. No immediate action needed.`;
+      suggestedActions.push(
+        "Revisit when the contract enters the 30-day window"
+      );
+    }
+
+    return {
+      meta: {
+        provider: PROVIDER_NAME,
+        model: MODEL,
+        promptVersion: PROMPT_VERSION,
+        confidencePct: input.isMissed
+          ? 95
+          : input.riskBand === "high"
+            ? 88
+            : input.riskBand === "medium"
+              ? 72
+              : 60,
+      },
+      headline,
+      rationale,
+      suggestedActions,
+    };
+  }
+
+  async summarizeVendorIntelligence(
+    input: VendorIntelligenceInput
+  ): Promise<VendorIntelligenceOutput> {
+    const savedDollars = Math.round(input.totalSavedAnnualCents / 100);
+    const highlights: string[] = [];
+    const summaryParts: string[] = [];
+
+    summaryParts.push(
+      `Tracking ${input.vendorName} for ${input.yearsTracked < 1 ? "less than a year" : `${Math.round(input.yearsTracked)} year${input.yearsTracked >= 2 ? "s" : ""}`} across ${input.activeSubscriptions} active subscription${input.activeSubscriptions === 1 ? "" : "s"}.`
+    );
+    if (savedDollars > 0) {
+      summaryParts.push(
+        `${formatDollars(savedDollars)} saved annualized to date.`
+      );
+    }
+
+    if (input.cancelledSubscriptions > 0) {
+      highlights.push(
+        `${input.cancelledSubscriptions} subscription${input.cancelledSubscriptions === 1 ? "" : "s"} cancelled previously.`
+      );
+    }
+    if (input.averagePriceChangePct !== null) {
+      const pct = input.averagePriceChangePct;
+      if (pct >= 5) {
+        highlights.push(
+          `Average price change of ${pct.toFixed(1)}% — expect upward pressure at renewal.`
+        );
+      } else if (pct <= -5) {
+        highlights.push(
+          `Average price change of ${pct.toFixed(1)}% — net downward trend.`
+        );
+      } else {
+        highlights.push(
+          `Price has held within ±5% across renewals — vendor pricing is stable.`
+        );
+      }
+    }
+    if (savedDollars > 0) {
+      highlights.push(
+        `${formatDollars(savedDollars)} in annualized savings recorded.`
+      );
+    }
+    if (input.lastDecisionLabel && input.lastDecisionDate) {
+      highlights.push(
+        `Last decision: ${humanizeDecision(input.lastDecisionLabel)} on ${input.lastDecisionDate}.`
+      );
+    }
+    if (input.expiringComplianceArtifacts > 0) {
+      highlights.push(
+        `${input.expiringComplianceArtifacts} compliance artifact${input.expiringComplianceArtifacts === 1 ? "" : "s"} expiring soon — request renewals.`
+      );
+    } else if (input.complianceArtifacts > 0) {
+      highlights.push(
+        `${input.complianceArtifacts} compliance artifact${input.complianceArtifacts === 1 ? "" : "s"} on file.`
+      );
+    }
+    if (highlights.length === 0) {
+      highlights.push(
+        "No multi-renewal history yet — patterns will emerge after the first renewal cycle."
+      );
+    }
+
+    return {
+      meta: {
+        provider: PROVIDER_NAME,
+        model: MODEL,
+        promptVersion: PROMPT_VERSION,
+        confidencePct:
+          input.yearsTracked < 1
+            ? 55
+            : input.activeSubscriptions + input.cancelledSubscriptions >= 3
+              ? 85
+              : 70,
+      },
+      summary: summaryParts.join(" "),
+      highlights: highlights.slice(0, 4),
+    };
+  }
+
+  async recommendRenewalDecision(
+    input: DecisionRecommendationInput
+  ): Promise<DecisionRecommendationOutput> {
+    const dollarsFmt = formatDollars(
+      Math.round(input.annualValueCents / 100)
+    );
+
+    let recommendation: DecisionRecommendationOutput["recommendation"];
+    let rationale: string;
+    const negotiationLevers: string[] = [];
+    let confidence = 60;
+
+    if (input.noticeDeadlineMissed) {
+      recommendation = "deferred";
+      rationale = `The notice window for ${input.productName} has already closed. Renewal Radar can't recommend a forward-looking action — log what actually happened so the ledger is accurate.`;
+      confidence = 90;
+    } else if (input.riskBand === "high" && input.hasPriceIncreaseClause) {
+      recommendation = "renewed_with_adjustments";
+      rationale = `Risk is high (${dollarsFmt}/yr, ${input.daysUntilNoticeDeadline} days to deadline) and the contract includes a price-increase clause. A flat renewal almost always means a higher invoice — renegotiate.`;
+      negotiationLevers.push(
+        "Push back on the price-increase clause",
+        "Offer a multi-year commitment in exchange for a price hold",
+        "Pull a competing quote to anchor the conversation"
+      );
+      confidence = 80;
+    } else if (input.riskBand === "high" && !input.hasPriceIncreaseClause) {
+      recommendation = "renewed_with_adjustments";
+      rationale = `Risk is high (${dollarsFmt}/yr, ${input.daysUntilNoticeDeadline} days to deadline). Even without a price-increase clause, the size and urgency warrant a conversation before signing.`;
+      negotiationLevers.push(
+        "Audit current seat count — pay only for active users",
+        "Ask for payment-term improvements (net-60 vs net-30)"
+      );
+      confidence = 75;
+    } else if (
+      input.pastSavingsAnnualCents > 0 &&
+      input.daysUntilNoticeDeadline > 14
+    ) {
+      recommendation = "renewed_with_adjustments";
+      rationale = `You've successfully renegotiated with ${input.vendorName} before (${formatDollars(Math.round(input.pastSavingsAnnualCents / 100))} saved). The pattern is reproducible — start the renegotiation early.`;
+      negotiationLevers.push(
+        "Reference the prior savings outcome as the floor"
+      );
+      confidence = 78;
+    } else if (input.riskBand === "low" && input.annualValueCents < 100000) {
+      recommendation = "renewed";
+      rationale = `${input.productName} is a low-risk, ${dollarsFmt}/yr contract. A flat renewal is the highest-leverage decision for your time.`;
+      confidence = 70;
+    } else {
+      recommendation = "deferred";
+      rationale = `Signals are mixed (${input.riskBand} risk, ${dollarsFmt}/yr, ${input.daysUntilNoticeDeadline} days out). Pull usage data from the product owner before deciding.`;
+      confidence = 55;
+    }
+
+    return {
+      meta: {
+        provider: PROVIDER_NAME,
+        model: MODEL,
+        promptVersion: PROMPT_VERSION,
+        confidencePct: confidence,
+      },
+      recommendation,
+      rationale,
+      negotiationLevers: negotiationLevers.slice(0, 3),
+    };
+  }
+
+  async narrateSavings(
+    input: SavingsNarrativeInput
+  ): Promise<SavingsNarrativeOutput> {
+    const baseline = formatDollars(
+      Math.round(input.baselineAnnualUsdCents / 100)
+    );
+    const saved = formatDollars(
+      Math.round(input.savedAnnualUsdCents / 100)
+    );
+
+    let narrative: string;
+    let confidence = 75;
+    if (input.savedAnnualUsdCents <= 0) {
+      narrative = `Flat renewal of ${input.productName} at ${baseline}/yr — no savings booked.`;
+      confidence = 90;
+    } else if (input.kind === "cancelled") {
+      narrative = `Cancelled ${input.productName}; ${saved}/yr returned to the budget.`;
+      confidence = 95;
+    } else if (input.kind === "downgraded") {
+      narrative = `Downgraded ${input.productName}; saved ${saved}/yr by right-sizing usage.`;
+      confidence = 85;
+    } else if (
+      input.kind === "renegotiated" &&
+      input.negotiationLever &&
+      input.negotiationLever !== "none"
+    ) {
+      narrative = `Renegotiated ${input.productName} via ${humanizeLever(input.negotiationLever)}; saved ${saved}/yr.`;
+      confidence = 88;
+    } else if (input.kind === "avoided_increase") {
+      narrative = `Held the line on ${input.productName} pricing; ${saved}/yr in avoided increase.`;
+      confidence = 80;
+    } else {
+      narrative = `Saved ${saved}/yr on ${input.productName} (${humanizeKind(input.kind)}).`;
+      confidence = 70;
+    }
+
+    return {
+      meta: {
+        provider: PROVIDER_NAME,
+        model: MODEL,
+        promptVersion: PROMPT_VERSION,
+        confidencePct: confidence,
+      },
+      narrative,
+    };
+  }
 }
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── shared formatting helpers ──────────────────────────────────────────────
+
+function formatDollars(dollars: number): string {
+  if (dollars >= 1_000_000) {
+    return `$${(dollars / 1_000_000).toFixed(1)}M`;
+  }
+  if (dollars >= 10_000) {
+    return `$${Math.round(dollars / 1_000)}K`;
+  }
+  if (dollars >= 1_000) {
+    return `$${(dollars / 1_000).toFixed(1)}K`;
+  }
+  return `$${dollars.toLocaleString("en-US")}`;
+}
+
+function joinWithAnd(parts: string[]): string {
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0]!;
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function humanizeDecision(label: string): string {
+  return label
+    .split("_")
+    .map((w) => (w === "with" ? "with" : w))
+    .join(" ");
+}
+
+function humanizeLever(lever: string): string {
+  switch (lever) {
+    case "multi_year_commit":
+      return "a multi-year commitment";
+    case "payment_terms":
+      return "payment-term improvements";
+    case "volume_increase":
+      return "a volume increase";
+    case "competing_quote":
+      return "a competing quote";
+    case "executive_escalation":
+      return "executive escalation";
+    case "consolidated_with_other_products":
+      return "product consolidation";
+    case "threatened_cancellation":
+      return "a credible cancellation threat";
+    default:
+      return lever.replace(/_/g, " ");
+  }
+}
+
+function humanizeKind(kind: string): string {
+  switch (kind) {
+    case "renegotiated":
+      return "renegotiation";
+    case "downgraded":
+      return "downgrade";
+    case "cancelled":
+      return "cancellation";
+    case "avoided_increase":
+      return "avoided increase";
+    default:
+      return kind.replace(/_/g, " ");
+  }
+}
+
+// ─── extraction helpers ─────────────────────────────────────────────────────
 
 function pageNumberFor(
   matchIndex: number,

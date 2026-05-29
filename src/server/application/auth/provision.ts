@@ -1,9 +1,22 @@
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import { accountsTable, invitationsTable, usersTable } from "@server/infrastructure/db/schema";
+import { normalizeEmailForDedup } from "@server/application/auth/email-normalize";
 import { renderWelcomeEmail } from "@server/infrastructure/email/templates/welcome";
 import { sendEmail } from "@server/infrastructure/email/client";
-import { acceptInvitation } from "@server/application/invitations";
+import {
+  acceptInvitation,
+  SeatLimitExceededError,
+} from "@server/application/invitations";
 import { getInvitationByToken } from "@server/infrastructure/db/repositories/invitations";
+import {
+  identifyUser,
+  recordEvent,
+} from "@server/infrastructure/analytics";
+import {
+  TIER_DEFINITIONS,
+  type PlanTier,
+} from "@server/domain/billing/tier-definitions";
 
 /**
  * Called from the Clerk webhook when a new user signs up.
@@ -38,6 +51,58 @@ export async function provisionNewUser(input: {
       invitation.email.toLowerCase() === input.email.toLowerCase()
     ) {
       const joinResult = await db.transaction(async (tx) => {
+        // Re-check the seat cap at accept time. Without this, two invitees
+        // accepting in parallel could both pass the create-time gate and
+        // exceed the plan limit. We pull the account row in the same tx so
+        // a parallel plan-downgrade webhook can't slip the check either.
+        const [account] = await tx
+          .select({
+            id: accountsTable.id,
+            planTier: accountsTable.planTier,
+          })
+          .from(accountsTable)
+          .where(eq(accountsTable.id, invitation.accountId))
+          .limit(1);
+        if (!account) {
+          throw new Error("Inviting account no longer exists");
+        }
+        const maxUsers =
+          TIER_DEFINITIONS[account.planTier as PlanTier].limits.maxUsers;
+        if (Number.isFinite(maxUsers)) {
+          const [activeRow] = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(usersTable)
+            .where(eq(usersTable.accountId, invitation.accountId));
+          const activeUsers = activeRow?.count ?? 0;
+
+          // Pending invites that AREN'T this one (this one is about to be
+          // accepted and converted to a user row, so it's already counted
+          // in the +1 we apply).
+          const [pendingRow] = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(invitationsTable)
+            .where(
+              and(
+                eq(invitationsTable.accountId, invitation.accountId),
+                isNull(invitationsTable.acceptedAt),
+                gt(invitationsTable.expiresAt, new Date())
+              )
+            );
+          const pendingInvites = Math.max(
+            0,
+            (pendingRow?.count ?? 0) - 1 // exclude self
+          );
+
+          if (activeUsers + 1 + pendingInvites > maxUsers) {
+            throw new SeatLimitExceededError({
+              currentUsers: activeUsers,
+              pendingInvitations: pendingInvites,
+              maxUsers,
+              currentTier: account.planTier as PlanTier,
+            });
+          }
+        }
+
         const [user] = await tx
           .insert(usersTable)
           .values({
@@ -59,6 +124,29 @@ export async function provisionNewUser(input: {
         acceptedByUserId: joinResult.userId,
       });
 
+      // Activation funnel: a user who joined an existing account didn't
+      // create one, so we fire `user.signed_up` with joinedExistingAccount=true.
+      const ctx = {
+        accountId: invitation.accountId,
+        userId: joinResult.userId,
+      };
+      void identifyUser({
+        context: ctx,
+        traits: {
+          email: input.email,
+          role: invitation.role,
+          joinedExistingAccount: true,
+        },
+      });
+      void recordEvent({
+        event: "user.signed_up",
+        context: ctx,
+        properties: {
+          joinedExistingAccount: true,
+          inviteFlow: true,
+        },
+      });
+
       return {
         accountId: invitation.accountId,
         userId: joinResult.userId,
@@ -70,6 +158,34 @@ export async function provisionNewUser(input: {
     console.warn(
       "[provision] invitation token did not match a pending invitation;",
       "falling through to self-signup"
+    );
+  }
+
+  // Free-tier abuse dedup — refuse a Free Forever signup when the
+  // normalized email already owns an existing Free Forever account. The
+  // audit's M1 finding: `user+1@gmail.com`, `user+2@gmail.com` previously
+  // each got 5 free subscriptions.
+  //
+  // Sample query path: take all existing Free Forever accounts whose
+  // billing email's normalized form matches this signup's. We can't
+  // normalize in SQL (would need a stored generated column for that), so
+  // we fetch the candidate set by domain and post-filter in code.
+  const normalized = normalizeEmailForDedup(input.email);
+  const candidates = await db
+    .select({
+      id: accountsTable.id,
+      billingEmail: accountsTable.billingEmail,
+    })
+    .from(accountsTable)
+    .where(eq(accountsTable.planTier, "free_forever"));
+  const collision = candidates.find(
+    (c) => normalizeEmailForDedup(c.billingEmail) === normalized
+  );
+  if (collision) {
+    throw new Error(
+      "A Free Forever account already exists for this email. " +
+        "Sign in to the existing account, ask the owner to invite you, " +
+        "or upgrade to a paid plan to add a second workspace."
     );
   }
 
@@ -112,12 +228,20 @@ export async function provisionNewUser(input: {
     fullName: input.fullName ?? input.email.split("@")[0]!,
   });
 
+  // Activation funnel: this is the canonical first event for self-serve users.
+  const ctx = { accountId: result.accountId, userId: result.userId };
+  void identifyUser({
+    context: ctx,
+    traits: { email: input.email, role: "owner", joinedExistingAccount: false },
+  });
+  void recordEvent({
+    event: "user.signed_up",
+    context: ctx,
+    properties: { joinedExistingAccount: false, inviteFlow: false },
+  });
+
   return { ...result, joinedExistingAccount: false };
 }
-
-// invitationsTable reference kept so a future SCIM provisioner can reuse
-// the import; explicitly silenced to satisfy strict unused-export checks.
-void invitationsTable;
 
 async function sendWelcomeEmail(input: {
   to: string;

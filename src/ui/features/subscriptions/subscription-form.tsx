@@ -32,6 +32,12 @@ type CommonProps = {
   users: AccountUserOption[];
   /** Default owner for create mode — the current signed-in user. */
   currentUserId: string;
+  /**
+   * Existing vendor names on this account. Powers the vendor autocomplete
+   * `<datalist>` so the user can pick "Atlassian" instead of typing
+   * "atlassian " and creating a duplicate vendor row. Server-provided.
+   */
+  existingVendorNames?: string[];
 };
 
 type Props =
@@ -137,7 +143,7 @@ export function SubscriptionForm(props: Props) {
           <Field
             label="Vendor"
             name="vendorName"
-            hint="The company that bills you (e.g. Atlassian, Datadog, Figma)"
+            hint="The company that bills you (e.g. Atlassian, Datadog, Figma). Existing vendors auto-suggest as you type."
             error={fieldErrors.vendorName}
           >
             <Input
@@ -148,7 +154,25 @@ export function SubscriptionForm(props: Props) {
               placeholder="e.g. Atlassian"
               readOnly={props.mode === "edit"}
               aria-readonly={props.mode === "edit"}
+              // Autocomplete from existing vendors so the user doesn't
+              // create "atlassian " or "Atlassian Inc" duplicates of
+              // the same row. New names typed freely still work.
+              list={
+                props.mode === "create" && props.existingVendorNames
+                  ? "subscription-vendor-options"
+                  : undefined
+              }
+              autoComplete="off"
             />
+            {props.mode === "create" &&
+              props.existingVendorNames &&
+              props.existingVendorNames.length > 0 && (
+                <datalist id="subscription-vendor-options">
+                  {props.existingVendorNames.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              )}
           </Field>
 
           <Field
@@ -241,7 +265,7 @@ export function SubscriptionForm(props: Props) {
             </Select>
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field
               label="Total seats"
               name="totalSeats"
@@ -283,7 +307,7 @@ export function SubscriptionForm(props: Props) {
           <CardTitle>Term</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field
               label="Term start"
               name="termStartDate"
@@ -313,7 +337,7 @@ export function SubscriptionForm(props: Props) {
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field
               label="Notice period (days)"
               name="noticePeriodDays"

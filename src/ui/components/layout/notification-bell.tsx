@@ -122,13 +122,20 @@ export function NotificationBell({ unreadCount, notifications }: Props) {
           </ul>
         )}
 
-        <div className="border-t px-3 py-2 text-xs">
+        <div className="border-t px-3 py-2 text-xs flex items-center justify-between">
+          <Link
+            href="/notifications"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setOpen(false)}
+          >
+            See all notifications →
+          </Link>
           <Link
             href="/settings/notifications"
             className="text-muted-foreground hover:text-foreground"
             onClick={() => setOpen(false)}
           >
-            Notification settings →
+            Settings
           </Link>
         </div>
       </DropdownMenuContent>

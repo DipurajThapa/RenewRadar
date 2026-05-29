@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   decisionContextsTable,
@@ -34,9 +34,9 @@ export async function listVendorEvents(
     eq(vendorEventsTable.vendorId, vendorId),
   ];
   if (options.kinds && options.kinds.length > 0) {
-    conditions.push(
-      sql`${vendorEventsTable.kind} = ANY(${options.kinds})` as never
-    );
+    // Use drizzle's inArray — postgres-js binds the JS array correctly,
+    // unlike a raw `= ANY($1)` which fails with "requires array on right side".
+    conditions.push(inArray(vendorEventsTable.kind, options.kinds));
   }
 
   const rows = await db
@@ -310,6 +310,3 @@ export async function listVendorsWithIntelligence(
   }));
 }
 
-// Reference sql to satisfy unused warning checks in environments where the
-// import survives tree-shaking validations.
-void gte;

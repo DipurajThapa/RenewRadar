@@ -5,17 +5,22 @@ import { redirect } from "next/navigation";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { ForbiddenError, requireRole } from "@server/middleware/rbac";
 import {
+  AccountLockedError,
+  requireAccountWritable,
+} from "@server/application/billing/lock-state";
+import {
   createSubscriptionSchema,
   dollarsToCents,
   updateSubscriptionSchema,
 } from "@shared/validation/subscription";
 import {
+  createSubscriptionDraft,
   createSubscriptionWithRenewalEvent,
   ensureVendor,
   softDeleteSubscription,
   updateSubscription,
 } from "@server/application/subscriptions";
-import { countActiveSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
+import { countSubscriptionsTowardCap } from "@server/infrastructure/db/repositories/subscriptions";
 import { userBelongsToAccount } from "@server/infrastructure/db/repositories/users";
 import { PLAN_LIMITS } from "@server/infrastructure/billing/plans";
 
@@ -34,17 +39,23 @@ export async function createSubscriptionAction(
   const { account, user } = await getCurrentAccountAndUser();
   try {
     requireRole(user, "member");
+    // Over-capacity lockdown — refuse writes when a prior downgrade left
+    // the account over the new caps. Reads (subscription list/detail) are
+    // unaffected so the user can decide what to delete.
+    requireAccountWritable(account);
   } catch (err) {
-    if (err instanceof ForbiddenError) {
+    if (err instanceof ForbiddenError || err instanceof AccountLockedError) {
       return { ok: false, formError: err.message };
     }
     throw err;
   }
 
-  // Free Forever cap check BEFORE validation — fast bail
+  // Free Forever cap check BEFORE validation — fast bail. Counts drafts too
+  // (countSubscriptionsTowardCap) so the cap is consistent across the active,
+  // draft, and spend-confirm create paths.
   const planLimit = PLAN_LIMITS[account.planTier]?.maxSubscriptions;
   if (planLimit !== undefined && Number.isFinite(planLimit)) {
-    const existing = await countActiveSubscriptions(account.id);
+    const existing = await countSubscriptionsTowardCap(account.id);
     if (existing >= planLimit) {
       return {
         ok: false,
@@ -270,4 +281,58 @@ function formatTier(tier: string): string {
     .split("_")
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2.7 — Quick-add draft. Minimal data: vendor + product + annual cost.
+// Drafts never fire alerts; user promotes to active via the regular edit form.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type QuickAddDraftInput = {
+  vendorName: string;
+  productName: string;
+  annualizedUsdCents: number;
+  notes?: string | null;
+};
+
+export type QuickAddDraftResult =
+  | { ok: true; subscriptionId: string }
+  | { ok: false; formError: string };
+
+export async function quickAddDraftAction(
+  input: QuickAddDraftInput
+): Promise<QuickAddDraftResult> {
+  const { account, user } = await getCurrentAccountAndUser();
+  try {
+    requireRole(user, "member");
+    requireAccountWritable(account);
+  } catch (err) {
+    if (err instanceof ForbiddenError || err instanceof AccountLockedError) {
+      return { ok: false, formError: err.message };
+    }
+    throw err;
+  }
+
+  // Plan cap + over-capacity lock are enforced inside createSubscriptionDraft
+  // (the single chokepoint shared by every draft-create path), so a thrown
+  // SubscriptionLimitError surfaces as formError via the catch below. Drafts
+  // DO count toward the cap there — otherwise they'd be a free bypass.
+  try {
+    const sub = await createSubscriptionDraft({
+      accountId: account.id,
+      actorUserId: user.id,
+      vendorName: input.vendorName,
+      productName: input.productName,
+      annualizedUsdCents: input.annualizedUsdCents,
+      notes: input.notes ?? null,
+    });
+
+    revalidatePath("/subscriptions");
+    revalidatePath("/dashboard");
+
+    return { ok: true, subscriptionId: sub.id };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { ok: false, formError: msg };
+  }
 }

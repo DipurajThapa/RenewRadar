@@ -9,14 +9,25 @@ import {
 } from "@server/infrastructure/db/schema";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { ForbiddenError, requireRole } from "@server/middleware/rbac";
+import {
+  requireTierFeature,
+  TierFeatureDeniedError,
+} from "@server/domain/billing/tier-features";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 import {
   upsertSavingsRecordFromDecision,
 } from "@server/application/savings";
 import { annualizeCents } from "@server/domain/billing/annualize";
+import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
+import { z } from "zod";
 import type { SavingsKind } from "@server/infrastructure/db/schema";
 
 export type ApprovalResult = { ok: true } | { ok: false; error: string };
+
+const approveInputSchema = z.object({
+  renewalEventId: z.string().uuid(),
+  approve: z.boolean(),
+});
 
 /**
  * Approve or reject a pending renewal decision under approvals-lite.
@@ -39,9 +50,21 @@ export async function approveRenewalDecisionAction(
   const { account, user } = await getCurrentAccountAndUser();
   try {
     requireRole(user, "admin");
+    // Approvals-lite is a Growth+ feature. The settings toggle that turns
+    // `account.requireApprovals` on is also gated; this is defense-in-depth
+    // so a stale-state Free/Starter account can't still complete approvals.
+    requireTierFeature(account.planTier, "approvalsLite");
   } catch (err) {
-    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    if (err instanceof ForbiddenError || err instanceof TierFeatureDeniedError) {
+      return { ok: false, error: err.message };
+    }
     throw err;
+  }
+
+  // Defense-in-depth — guard against malformed UUIDs reaching the DB layer.
+  const parsed = approveInputSchema.safeParse({ renewalEventId, approve });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid input" };
   }
 
   type Context = {
@@ -117,6 +140,22 @@ export async function approveRenewalDecisionAction(
           },
         });
 
+        // Vendor memory — record the approval as a discrete event so the
+        // timeline shows the two-step approval flow (logged → approved).
+        await recordVendorEvent(tx, {
+          accountId: account.id,
+          vendorId: sub.vendorId,
+          subscriptionId: sub.id,
+          kind: "renewal_decision_approved",
+          payload: {
+            decision: renewal.decision,
+            approvedByUserId: user.id,
+          },
+          actorUserId: user.id,
+          relatedEntityType: "renewal_event",
+          relatedEntityId: renewal.id,
+        });
+
         // Derive savings context to apply outside the transaction.
         const baseline = annualizeCents(
           sub.totalCostPerPeriodCents,
@@ -169,6 +208,22 @@ export async function approveRenewalDecisionAction(
             decidedByUserId: renewal.decidedByUserId,
           },
           after: { approvedByUserId: user.id },
+        });
+
+        // Vendor memory — record the rejection symmetrically so a future
+        // operator reading the timeline can see why a decision was overturned.
+        await recordVendorEvent(tx, {
+          accountId: account.id,
+          vendorId: sub.vendorId,
+          subscriptionId: sub.id,
+          kind: "renewal_decision_rejected",
+          payload: {
+            decision: renewal.decision ?? "unknown",
+            rejectedByUserId: user.id,
+          },
+          actorUserId: user.id,
+          relatedEntityType: "renewal_event",
+          relatedEntityId: renewal.id,
         });
         return null;
       }

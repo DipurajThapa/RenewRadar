@@ -2,11 +2,12 @@
 
 | Audience | Start here |
 |---|---|
+| **New user** | [user-manual.md](user-manual.md) — guided tour of every workflow |
 | **New engineer** | [development/getting-started.md](development/getting-started.md) |
-| **Architect / reviewer** | [architecture/overview.md](architecture/overview.md), [architecture/layers.md](architecture/layers.md), [architecture/adr/](architecture/adr/) |
+| **Architect / reviewer** | [architecture/overview.md](architecture/overview.md), [architecture/layers.md](architecture/layers.md), [architecture/technical-specification.md](architecture/technical-specification.md), [architecture/adr/](architecture/adr/) |
 | **DevOps** | [deployment/production.md](deployment/production.md) |
 | **On-call** | [runbooks/](runbooks/) |
-| **Product** | [product/implementation-plan.md](product/implementation-plan.md) |
+| **Product** | [product/implementation-plan.md](product/implementation-plan.md), [product/strategy-wedge-and-moat.md](product/strategy-wedge-and-moat.md) |
 
 ## What lives where
 
@@ -18,5 +19,6 @@
 
 ## What does NOT live here
 
-- API contracts — there is no external API yet; the contract is the TypeScript boundary between server actions / route handlers and their callers. When we publish a customer-facing API, an `api/` subfolder lands here with the OpenAPI spec.
-- User-facing help docs — those live on the marketing site.
+- Deep API contracts — the public API + key auth exist (`/api/v1`); a full OpenAPI spec will land in an `api/` subfolder when the surface stabilizes. The day-to-day contract is still the TypeScript boundary between server actions / route handlers and their callers.
+
+> The **[user manual](user-manual.md)** is the new-user help doc; longer-form marketing help also lives on the marketing site.

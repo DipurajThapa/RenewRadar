@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { Download, TrendingDown, AlertTriangle, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@ui/components/primitives/card";
+import { PageHeader } from "@ui/components/shared/page-header";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import {
   getExposureByStatus,
   getMissedDeadlinesByMonth,
 } from "@server/infrastructure/db/repositories/reports";
 import {
+  getRealizedSavingsTotals,
   getSavingsByMonth,
   getSavingsTotals,
   listSavingsForAccount,
 } from "@server/infrastructure/db/repositories/savings";
+import { BadgeCheck } from "lucide-react";
+import { getInsightProvider } from "@server/infrastructure/ai";
+import { hasTierFeature } from "@server/domain/billing/tier-features";
 import { formatCurrency, formatDate } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +45,14 @@ export default async function ReportsPage() {
     savingsByMonth,
     recentSavings,
     missedByMonth,
+    realizedTotals,
   ] = await Promise.all([
     getExposureByStatus(account.id),
     getSavingsTotals(account.id, { sinceDate: yearStart }),
     getSavingsByMonth(account.id, { sinceDate: yearStart }),
     listSavingsForAccount(account.id, { limit: 10 }),
     getMissedDeadlinesByMonth(account.id, { sinceDate: yearStart }),
+    getRealizedSavingsTotals(account.id),
   ]);
 
   const totalExposureCents = exposure.reduce(
@@ -59,15 +66,46 @@ export default async function ReportsPage() {
     0
   );
 
+  // AI savings narratives — one per recent decision. Gated on savingsReports
+  // (Growth+) since narratives are part of the paid reports surface. Stubs
+  // are deterministic and fast; production swap batches into one request.
+  const savingsNarratives: Array<string | null> = hasTierFeature(
+    account.planTier,
+    "savingsReports"
+  )
+    ? await (async () => {
+        const ai = getInsightProvider();
+        return Promise.all(
+          recentSavings.map((s) =>
+            ai
+              .narrateSavings({
+                vendorName: s.vendorName,
+                productName: s.productName,
+                kind: s.kind,
+                baselineAnnualUsdCents: s.baselineAnnualUsdCents,
+                newAnnualUsdCents: s.newAnnualUsdCents,
+                savedAnnualUsdCents: s.savedAnnualUsdCents,
+                // Real data from the decision_context — the decide-now form
+                // collects these now (P2.3).
+                negotiationLever: s.negotiationLever,
+                rationaleCodes: s.rationaleCodes,
+              })
+              .then((r) => r.narrative)
+              .catch(() => null)
+          )
+        );
+      })()
+    : recentSavings.map(() => null);
+
   return (
     <div className="space-y-8 max-w-6xl">
-      <header>
-        <h1 className="text-2xl font-semibold">Reports</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+      <PageHeader>
+        <PageHeader.Title>Reports</PageHeader.Title>
+        <PageHeader.Description>
           Year-to-date view of exposure, savings, and missed deadlines. All
           figures annualized.
-        </p>
-      </header>
+        </PageHeader.Description>
+      </PageHeader>
 
       {/* Hero metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -124,7 +162,7 @@ export default async function ReportsPage() {
               {exposure.map((bucket) => (
                 <li
                   key={bucket.status}
-                  className="grid grid-cols-[200px_1fr_auto] gap-4 items-center"
+                  className="grid grid-cols-[120px_1fr_auto] sm:grid-cols-[200px_1fr_auto] gap-4 items-center"
                 >
                   <span className="capitalize">
                     {STATUS_LABELS[bucket.status] ?? bucket.status}
@@ -229,33 +267,102 @@ export default async function ReportsPage() {
               <div>
                 <h3 className="text-sm font-medium mb-2">Recent decisions</h3>
                 <ul className="divide-y border rounded-md bg-white">
-                  {recentSavings.map((s) => (
+                  {recentSavings.map((s, i) => (
                     <li
                       key={s.id}
-                      className="px-3 py-2 flex items-center justify-between text-sm gap-3"
+                      className="px-3 py-2 text-sm space-y-1"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium truncate">
-                          {s.vendorName} — {s.productName}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium truncate">
+                            {s.vendorName} — {s.productName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {SAVINGS_KIND_LABELS[s.kind] ?? s.kind} ·{" "}
+                            {formatDate(s.createdAt)}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {SAVINGS_KIND_LABELS[s.kind] ?? s.kind} ·{" "}
-                          {formatDate(s.createdAt)}
+                        <div className="text-right tabular-nums">
+                          <div className="text-green-700 font-medium">
+                            {formatCurrency(s.savedAnnualUsdCents)}/yr
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {s.isLocked ? "Locked" : "Editable"}
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right tabular-nums">
-                        <div className="text-green-700 font-medium">
-                          {formatCurrency(s.savedAnnualUsdCents)}/yr
+                      {savingsNarratives[i] && (
+                        <div className="text-xs text-muted-foreground italic pl-0.5">
+                          ✦ {savingsNarratives[i]}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {s.isLocked ? "Locked" : "Editable"}
-                        </div>
-                      </div>
+                      )}
                     </li>
                   ))}
                 </ul>
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Realized vs projected savings (A2 — the ROI loop) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-2">
+          <BadgeCheck className="h-4 w-4 text-green-600" />
+          <CardTitle>Realized vs projected savings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {realizedTotals.projectedSavedAnnualUsdCents === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No savings logged yet. Once you log a renewal decision, Renewal
+              Radar reconciles the projected saving against your actual
+              post-renewal spend — proving what really stuck.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-md border p-3 bg-muted/20">
+                  <div className="text-xs text-muted-foreground">
+                    Projected savings
+                  </div>
+                  <div className="text-2xl font-semibold tabular-nums mt-1">
+                    {formatCurrency(realizedTotals.projectedSavedAnnualUsdCents)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    What the decisions aimed to save
+                  </div>
+                </div>
+                <div className="rounded-md border p-3 bg-green-50/50">
+                  <div className="text-xs text-muted-foreground">
+                    Proven savings (reconciled)
+                  </div>
+                  <div className="text-2xl font-semibold tabular-nums mt-1 text-green-700">
+                    {formatCurrency(realizedTotals.realizedSavedAnnualUsdCents)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Confirmed against actual post-renewal spend
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-green-100 text-green-800 px-2 py-0.5">
+                  {realizedTotals.realizedCount} matched projection
+                </span>
+                {realizedTotals.varianceCount > 0 && (
+                  <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">
+                    {realizedTotals.varianceCount} variance
+                  </span>
+                )}
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                  {realizedTotals.awaitingCount} awaiting first post-renewal charge
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground border-t pt-2">
+                Reconciliation runs daily off your auto-ingested spend feed —
+                Renewal Radar only records what actually happened; it never
+                changes a price or contacts a vendor.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>

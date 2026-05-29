@@ -6,8 +6,10 @@ import {
 } from "@server/infrastructure/db/schema";
 import type { SavingsKind } from "@server/infrastructure/db/schema";
 import { annualizeCents } from "@server/domain/billing/annualize";
+import { expectedRealizationDate } from "@server/domain/savings/reconcile";
 import { AUDIT_ACTIONS, writeAuditLog } from "@server/infrastructure/audit-log/writer";
 import { recordVendorEvent } from "@server/application/vendor-memory/recorder";
+import { recordEvent } from "@server/infrastructure/analytics";
 
 /**
  * Derive how much was saved (annualized cents) from a renewal decision.
@@ -100,6 +102,21 @@ export async function upsertSavingsRecordFromDecision(input: {
         after: (updated ?? existing) as unknown as Record<string, unknown>,
       });
     } else {
+      // Load the sub once: vendorId for the vendor event + termEndDate/cycle to
+      // anchor when the renewed price should be observable (A2 reconciliation).
+      const [sub] = await tx
+        .select({
+          vendorId: subscriptionsTable.vendorId,
+          termEndDate: subscriptionsTable.termEndDate,
+          billingCycle: subscriptionsTable.billingCycle,
+        })
+        .from(subscriptionsTable)
+        .where(eq(subscriptionsTable.id, input.subscriptionId))
+        .limit(1);
+      const expectedSavingsRealizedAt = sub
+        ? expectedRealizationDate(sub.termEndDate, sub.billingCycle)
+        : null;
+
       const [created] = await tx
         .insert(savingsRecordsTable)
         .values({
@@ -111,6 +128,7 @@ export async function upsertSavingsRecordFromDecision(input: {
           newAnnualUsdCents,
           savedAnnualUsdCents,
           note: input.note ?? null,
+          expectedSavingsRealizedAt,
         })
         .returning();
       if (!created) throw new Error("Failed to insert savings record");
@@ -125,11 +143,6 @@ export async function upsertSavingsRecordFromDecision(input: {
 
       // Vendor memory — record savings so the per-vendor intelligence view
       // can show "you've saved $X with this vendor over the last 3 years."
-      const [sub] = await tx
-        .select({ vendorId: subscriptionsTable.vendorId })
-        .from(subscriptionsTable)
-        .where(eq(subscriptionsTable.id, input.subscriptionId))
-        .limit(1);
       if (sub) {
         await recordVendorEvent(tx, {
           accountId: input.accountId,
@@ -147,6 +160,25 @@ export async function upsertSavingsRecordFromDecision(input: {
           relatedEntityId: created.id,
         });
       }
+
+      // Activation funnel: the first savings record is the moment the user
+      // sees Renewal Radar pay for itself. Fire OUTSIDE the create branch's
+      // audit log but still inside the tx is fine — `recordEvent` doesn't
+      // await the provider call, so it's effectively a fire-and-forget.
+      void recordEvent({
+        event: "savings_record.created",
+        context: {
+          accountId: input.accountId,
+          userId: input.actorUserId,
+        },
+        properties: {
+          savingsRecordId: created.id,
+          renewalEventId: input.renewalEventId,
+          kind: input.kind,
+          baselineAnnualUsdCents: input.baselineAnnualUsdCents,
+          savedAnnualUsdCents,
+        },
+      });
     }
   });
 }

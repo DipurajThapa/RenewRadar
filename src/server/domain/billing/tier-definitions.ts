@@ -61,6 +61,12 @@ export type TierDefinition = {
      * surfaced in the upgrade nudge well before hitting the hard cap.
      */
     aiExtractionPagesPerMonth: number; // Infinity for enterprise
+    /**
+     * Total bytes of uploaded documents the account can hold. Enforced at
+     * upload time in `uploadDocument`. Soft message at 80% used; hard
+     * refusal at the cap. Infinity for enterprise.
+     */
+    maxStorageBytes: number;
   };
 
   /** CTA label on the plan card */
@@ -94,10 +100,11 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
     monthlyUsd: 0,
     tagline: "For solo IT/Ops on a starter stack",
     teaserDescription:
-      "Track up to 5 subscriptions. Single user. Email alerts.",
+      "Track up to 5 subscriptions. Single user. One AI contract extraction.",
     features: [
       "Up to 5 subscriptions",
       "1 internal user",
+      "AI contract extraction · up to 5 pages/mo (one contract)",
       "Notice deadline alerts (email)",
       "Renewal calendar",
       "Cancellation letter drafts",
@@ -106,7 +113,10 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
     limits: {
       maxSubscriptions: 5,
       maxUsers: 1,
-      aiExtractionPagesPerMonth: 0,
+      // 5 pages/mo = enough to extract one short contract. The single best
+      // activation signal we have. After this they hit the wall and upgrade.
+      aiExtractionPagesPerMonth: 5,
+      maxStorageBytes: 100 * 1024 * 1024, // 100 MB
     },
     ctaLabel: "Start free",
     publiclyPurchasable: false,
@@ -137,6 +147,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: 50,
       maxUsers: 3,
       aiExtractionPagesPerMonth: 200,
+      maxStorageBytes: 2 * 1024 * 1024 * 1024, // 2 GB
     },
     ctaLabel: "Start 14-day trial",
     highlighted: true,
@@ -174,6 +185,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: 200,
       maxUsers: 10,
       aiExtractionPagesPerMonth: 1_000,
+      maxStorageBytes: 20 * 1024 * 1024 * 1024, // 20 GB
     },
     ctaLabel: "Start 14-day trial",
     publiclyPurchasable: true,
@@ -209,6 +221,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: 500,
       maxUsers: 25,
       aiExtractionPagesPerMonth: 5_000,
+      maxStorageBytes: 200 * 1024 * 1024 * 1024, // 200 GB
     },
     ctaLabel: "Start 14-day trial",
     publiclyPurchasable: true,
@@ -242,6 +255,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: Number.POSITIVE_INFINITY,
       maxUsers: Number.POSITIVE_INFINITY,
       aiExtractionPagesPerMonth: Number.POSITIVE_INFINITY,
+      maxStorageBytes: Number.POSITIVE_INFINITY,
     },
     ctaLabel: "Talk to sales",
     publiclyPurchasable: false,
@@ -386,11 +400,31 @@ export const FEATURE_MATRIX: FeatureRow[] = [
   {
     label: "AI contract extraction (pages/mo)",
     cells: {
-      free_forever: "—",
+      free_forever: "5",
       starter: "200",
       growth: "1,000",
       pro: "5,000",
       enterprise: "Unlimited",
+    },
+  },
+  {
+    label: "Spend auto-discovery feed",
+    cells: {
+      free_forever: false,
+      starter: true,
+      growth: true,
+      pro: true,
+      enterprise: true,
+    },
+  },
+  {
+    label: "Renewal intelligence brief",
+    cells: {
+      free_forever: false,
+      starter: true,
+      growth: true,
+      pro: true,
+      enterprise: true,
     },
   },
   {

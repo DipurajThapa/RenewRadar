@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
@@ -139,4 +139,78 @@ export async function countActiveSubscriptions(
       )
     );
   return result[0]?.count ?? 0;
+}
+
+/**
+ * Count subscriptions that occupy the plan's subscription cap. Unlike
+ * `countActiveSubscriptions` (the KPI count, active-only), this INCLUDES drafts
+ * — otherwise a user could park unlimited subscriptions in draft state (e.g. by
+ * confirming every auto-detected spend charge) and bypass the cap entirely.
+ * Excludes only `cancelled` + `expired` (no longer tracked, free the slot).
+ */
+export async function countSubscriptionsTowardCap(
+  accountId: string
+): Promise<number> {
+  const result = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(subscriptionsTable)
+    .where(
+      and(
+        eq(subscriptionsTable.accountId, accountId),
+        notInArray(subscriptionsTable.status, ["cancelled", "expired"])
+      )
+    );
+  return result[0]?.count ?? 0;
+}
+
+/**
+ * Find existing active subscriptions for the account by (vendor, product)
+ * key. Returns a Map keyed on `"<vendorLower>::<productLower>"` so the CSV
+ * import can detect "I uploaded this row already" without writing duplicates.
+ *
+ * Matching rules:
+ *   - Vendor name compared case-insensitively, trimmed.
+ *   - Product name compared case-insensitively, trimmed.
+ *   - Only `status = 'active'` rows are considered — a previously cancelled
+ *     subscription should be importable again as a fresh row.
+ *
+ * Scale note: per-account vendor + subscription counts in V1 are < 200 each,
+ * so a single SELECT + in-memory match is cheap. If accounts grow past ~1k
+ * subs this should become a SQL-side `WHERE (vendor, product) IN (...)`.
+ */
+export async function listSubscriptionExistenceKeys(
+  accountId: string
+): Promise<Map<string, string>> {
+  const rows = await db
+    .select({
+      id: subscriptionsTable.id,
+      vendorName: vendorsTable.name,
+      productName: subscriptionsTable.productName,
+    })
+    .from(subscriptionsTable)
+    .innerJoin(vendorsTable, eq(subscriptionsTable.vendorId, vendorsTable.id))
+    .where(
+      and(
+        eq(subscriptionsTable.accountId, accountId),
+        eq(subscriptionsTable.status, "active")
+      )
+    );
+
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const key = subscriptionMatchKey(r.vendorName, r.productName);
+    out.set(key, r.id);
+  }
+  return out;
+}
+
+/**
+ * Canonical match key used by the import preview + commit paths. Exported
+ * so both call sites build keys identically.
+ */
+export function subscriptionMatchKey(
+  vendorName: string,
+  productName: string
+): string {
+  return `${vendorName.trim().toLowerCase()}::${productName.trim().toLowerCase()}`;
 }

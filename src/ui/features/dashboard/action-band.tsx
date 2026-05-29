@@ -1,19 +1,28 @@
 import Link from "next/link";
-import { AlertTriangle, Clock, RotateCcw, Check } from "lucide-react";
-import { Card, CardContent } from "@ui/components/primitives/card";
+import { AlertTriangle, ArrowRight, Check, Clock, RotateCcw } from "lucide-react";
+import { Card } from "@ui/components/primitives/card";
 import { Button } from "@ui/components/primitives/button";
 import { cn } from "@shared/utils";
 import type { ActionBandCounts } from "@server/infrastructure/db/repositories/dashboard";
 
+/**
+ * Action band — the "what should I do right now?" surface, sitting above
+ * the KPI strip. Each card answers a single question with a count + a
+ * primary action.
+ *
+ * Tone semantics are bound to the design system (success/warning/destructive)
+ * so theming flows from globals.css. Future state (V1.5+) cards use a
+ * dashed-border treatment so they don't pretend to be live.
+ */
 export function ActionBand({ counts }: { counts: ActionBandCounts }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-stagger">
       <ActionCard
         icon={<AlertTriangle className="h-5 w-5" />}
         count={counts.noticeDeadlinesActionWindow}
-        label="notice deadlines hit action window"
+        label="notice deadlines in the action window"
         href="/notice-deadlines"
-        cta="View calendar"
+        cta="Open calendar"
         tone={counts.noticeDeadlinesActionWindow > 0 ? "urgent" : "ok"}
       />
       <ActionCard
@@ -21,21 +30,42 @@ export function ActionBand({ counts }: { counts: ActionBandCounts }) {
         count={counts.renewalsAwaitingDecision}
         label="renewals awaiting your decision"
         href="/renewals"
-        cta="View calendar"
+        cta="Decide now"
         tone={counts.renewalsAwaitingDecision > 0 ? "moderate" : "ok"}
       />
       <ActionCard
         icon={<RotateCcw className="h-5 w-5" />}
         count={0}
-        label="seats inactive past threshold"
+        label="inactive seats past your threshold"
         href="#"
-        cta="Coming in V1.5"
+        cta="Coming soon"
         tone="future"
         disabled
       />
     </div>
   );
 }
+
+type ActionTone = "urgent" | "moderate" | "ok" | "future";
+
+const toneCard: Record<ActionTone, string> = {
+  urgent: "border-destructive/30 bg-destructive-soft/60",
+  moderate: "border-warning/30 bg-warning-soft/60",
+  ok: "border-success/25 bg-success-soft/50",
+  future: "border-dashed border-border bg-muted/40",
+};
+const toneIcon: Record<ActionTone, string> = {
+  urgent: "bg-destructive/10 text-destructive",
+  moderate: "bg-warning/15 text-warning-soft-foreground",
+  ok: "bg-success/15 text-success-soft-foreground",
+  future: "bg-muted text-muted-foreground",
+};
+const toneNumber: Record<ActionTone, string> = {
+  urgent: "text-destructive-soft-foreground",
+  moderate: "text-warning-soft-foreground",
+  ok: "text-success-soft-foreground",
+  future: "text-muted-foreground",
+};
 
 function ActionCard({
   icon,
@@ -51,45 +81,57 @@ function ActionCard({
   label: string;
   href: string;
   cta: string;
-  tone: "urgent" | "moderate" | "ok" | "future";
+  tone: ActionTone;
   disabled?: boolean;
 }) {
-  const toneClasses = {
-    urgent: "border-red-300 bg-red-50",
-    moderate: "border-yellow-300 bg-yellow-50",
-    ok: "border-green-200 bg-green-50",
-    future: "border-dashed border-gray-200 bg-muted/30 opacity-70",
-  }[tone];
-
   return (
-    <Card className={cn("border", toneClasses)}>
-      <CardContent className="p-5 space-y-3">
-        <div className="flex items-start gap-2">
-          {tone === "ok" ? (
-            <Check className="h-5 w-5 text-green-600 shrink-0" />
-          ) : (
-            <span className="shrink-0">{icon}</span>
+    <Card className={cn("border p-5 flex flex-col gap-4", toneCard[tone])}>
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "inline-flex h-9 w-9 items-center justify-center rounded-md shrink-0 [&_svg]:h-4 [&_svg]:w-4",
+            toneIcon[tone]
           )}
-          <div className="text-sm">
-            {tone === "ok" ? (
-              <span>All clear — no {label}</span>
-            ) : (
-              <>
-                <span className="text-2xl font-bold leading-none">{count}</span>{" "}
-                <span className="text-muted-foreground">{label}</span>
-              </>
-            )}
-          </div>
+        >
+          {tone === "ok" ? <Check /> : icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          {tone === "ok" ? (
+            <div className="text-sm font-medium text-success-soft-foreground">
+              You're caught up
+            </div>
+          ) : (
+            <div className="leading-tight">
+              <div
+                className={cn(
+                  "font-display font-semibold text-3xl tabular-nums tracking-tight",
+                  toneNumber[tone]
+                )}
+              >
+                {count}
+              </div>
+              <div className="text-xs text-foreground/70 mt-1.5 leading-snug">
+                {label}
+              </div>
+            </div>
+          )}
         </div>
+      </div>
 
-        {tone === "ok" ? null : disabled ? (
-          <div className="text-xs text-muted-foreground italic">{cta}</div>
-        ) : (
-          <Button asChild variant="outline" size="sm" className="w-full">
-            <Link href={href}>{cta} →</Link>
-          </Button>
-        )}
-      </CardContent>
+      {tone === "ok" ? (
+        <div className="text-[12px] text-success-soft-foreground/80">
+          No {label}.
+        </div>
+      ) : disabled ? (
+        <div className="text-xs text-muted-foreground italic">{cta}</div>
+      ) : (
+        <Button asChild variant="subtle" size="sm" className="w-full">
+          <Link href={href}>
+            {cta}
+            <ArrowRight />
+          </Link>
+        </Button>
+      )}
     </Card>
   );
 }

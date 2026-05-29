@@ -57,8 +57,10 @@ export default async function AuditLogPage({
           No audit entries match this filter.
         </div>
       ) : (
-        <div className="rounded-md border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        // Wrap in overflow-x-auto so the 4-column table can scroll
+        // horizontally on narrow phones instead of overflowing the page.
+        <div className="rounded-md border bg-white overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2">When</th>
