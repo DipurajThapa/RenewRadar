@@ -10,15 +10,18 @@
  * evidence. No cell does cross-signal resolution + regression + evidence.
  */
 import type {
+  AnswerClaim,
   BriefClaim,
   BriefEvidence,
   ChargePoint,
+  GroundedAnswer,
+  QuestionInput,
   RecommendedAction,
   RenewalBriefInput,
   RenewalIntelligenceBrief,
   ReasoningProvider,
 } from "./types";
-import { validateBrief } from "./validate";
+import { validateAnswer, validateBrief } from "./validate";
 
 const LEVER_LABEL: Record<string, string> = {
   competing_quote: "anchor with a competing quote",
@@ -426,6 +429,115 @@ export class DeterministicReasoningProvider implements ReasoningProvider {
     };
 
     return validateBrief(brief, { clauseText: input.priceIncreaseClauseText });
+  }
+
+  /**
+   * Grounded Q&A (Phase 3). Composes an answer STRICTLY from the retrieved
+   * facts — one claim per fact, each claim's evidence IS the fact it was built
+   * from. Nothing is asserted that isn't a retrieved row, and `validateAnswer`
+   * drops anything ungrounded. Empty facts → an honest "no data" answer.
+   */
+  async answerQuestion(input: QuestionInput): Promise<GroundedAnswer> {
+    const baseMeta = {
+      provider: this.providerName,
+      model: this.model,
+      promptVersion: this.promptVersion,
+      engine: "deterministic" as const,
+    };
+
+    if (input.facts.length === 0) {
+      return validateAnswer(
+        {
+          meta: { ...baseMeta, confidencePct: 60 },
+          question: input.question,
+          summary:
+            "I couldn't find data in your account to answer that — try asking about renewals, risk, vendor spend, savings, or compliance.",
+          answers: [],
+          missingInfo: [
+            "No matching records were found. I can answer questions about upcoming renewals, your biggest risk, vendor spend, savings, and expiring compliance.",
+          ],
+          deepLinks: [],
+        },
+        { sourceTexts: [] }
+      );
+    }
+
+    const answers: AnswerClaim[] = input.facts.map((f) => ({
+      statement: f.detail,
+      engine: "deterministic" as const,
+      confidencePct: confidenceForSource(f.source),
+      evidence: [f],
+    }));
+
+    // Dedup deep-links — multiple facts may point at the same screen.
+    const seen = new Set<string>();
+    const deepLinks: { label: string; href: string }[] = [];
+    for (const f of input.facts) {
+      if (f.href && !seen.has(f.href)) {
+        seen.add(f.href);
+        deepLinks.push({ label: deepLinkLabel(f.source), href: f.href });
+      }
+    }
+
+    const avg = Math.round(
+      answers.reduce((s, a) => s + a.confidencePct, 0) / answers.length
+    );
+
+    return validateAnswer(
+      {
+        meta: { ...baseMeta, confidencePct: avg },
+        question: input.question,
+        summary: input.facts[0]!.detail.slice(0, 200),
+        answers,
+        missingInfo: [],
+        deepLinks,
+      },
+      {
+        sourceTexts: input.facts.map(
+          (f) => `${f.detail}${f.quote ? `\n${f.quote}` : ""}`
+        ),
+      }
+    );
+  }
+}
+
+/** Confidence by fact source — the account's own records are near-certain;
+ *  cross-account benchmarks (smaller sample) get a haircut. */
+function confidenceForSource(source: string): number {
+  switch (source) {
+    case "vendor_benchmark":
+      return 75;
+    case "account_risk":
+    case "needs_you":
+    case "savings":
+    case "vendor_intelligence":
+    case "renewal_range":
+    case "compliance":
+    case "kpis":
+      return 90;
+    default:
+      return 85;
+  }
+}
+
+/** Where a fact's deep-link should take the operator. */
+function deepLinkLabel(source: string): string {
+  switch (source) {
+    case "account_risk":
+    case "needs_you":
+      return "Open Needs you";
+    case "vendor_intelligence":
+    case "vendor_benchmark":
+    case "compliance":
+      return "Open vendor";
+    case "savings":
+      return "Open reports";
+    case "renewal_range":
+      return "Open renewals";
+    case "kpis":
+      return "Open dashboard";
+    default:
+      return "Open";
   }
 }
 

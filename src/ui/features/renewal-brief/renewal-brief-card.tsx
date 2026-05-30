@@ -2,23 +2,11 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, ChevronDown, BadgeCheck } from "lucide-react";
-import { useState } from "react";
+import { Sparkles, BadgeCheck } from "lucide-react";
 import { useToast } from "@ui/hooks/use-toast";
 import { generateBriefAction } from "@app/(app)/subscriptions/[id]/actions";
-import type {
-  BriefClaim,
-  RenewalIntelligenceBrief,
-} from "@server/infrastructure/ai/reasoning/types";
-
-const CLAIM_LABEL: Record<string, string> = {
-  price_trajectory: "Price trajectory",
-  benchmark_position: "Benchmark",
-  renewal_risk: "Renewal risk",
-  leverage: "Negotiation leverage",
-  batna: "Your walk-away (BATNA)",
-  recommended_action: "Recommendation",
-};
+import { ClaimRow } from "./claim-row";
+import type { RenewalIntelligenceBrief } from "@server/infrastructure/ai/reasoning/types";
 
 const ACTION_TONE: Record<string, string> = {
   renewed: "bg-green-100 text-green-800",
@@ -153,50 +141,5 @@ export function RenewalBriefCard({
         </>
       )}
     </section>
-  );
-}
-
-function ClaimRow({ claim }: { claim: BriefClaim }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="rounded-md border bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full text-left px-3 py-2 flex items-start justify-between gap-2"
-      >
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-            {CLAIM_LABEL[claim.key] ?? claim.key}
-            <span className="text-indigo-600">
-              {claim.engine === "llm" ? "Claude" : "deterministic"}
-            </span>
-            <span>· {claim.confidencePct}%</span>
-          </div>
-          <div className="text-sm mt-0.5">{claim.statement}</div>
-        </div>
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open && (
-        <div className="border-t px-3 py-2 space-y-1.5 bg-muted/20">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Evidence
-          </div>
-          {claim.evidence.map((e, i) => (
-            <div key={i} className="text-xs text-foreground/80">
-              <span className="font-medium">{e.source.replace(/_/g, " ")}:</span>{" "}
-              {e.detail}
-              {e.quote && (
-                <blockquote className="mt-1 border-l-2 pl-2 italic text-muted-foreground">
-                  &ldquo;{e.quote}&rdquo;
-                </blockquote>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
