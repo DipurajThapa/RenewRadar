@@ -45,7 +45,7 @@ const GROUPS: ReadonlyArray<{ label: string; items: readonly NavItem[] }> = [
     label: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/action-queue", label: "Action queue", icon: ListChecks },
+      { href: "/action-queue", label: "Needs you", icon: ListChecks },
     ],
   },
   {
