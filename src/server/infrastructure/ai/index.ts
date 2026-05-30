@@ -131,8 +131,6 @@ export type {
   RiskExplainerOutput,
   VendorIntelligenceInput,
   VendorIntelligenceOutput,
-  DecisionRecommendationInput,
-  DecisionRecommendationOutput,
   SavingsNarrativeInput,
   SavingsNarrativeOutput,
 } from "./types";

@@ -9,6 +9,7 @@ import { extractDocumentJob } from "@server/jobs/functions/extract-document";
 import { pastDueGraceEnforcement } from "@server/jobs/functions/past-due-grace";
 import { spendSync } from "@server/jobs/functions/spend-sync";
 import { savingsReconciliation } from "@server/jobs/functions/savings-reconciliation";
+import { renewalAgent } from "@server/jobs/functions/renewal-agent";
 
 // Functions registered with Inngest:
 //   - pastDueGraceEnforcement (02:00 UTC daily)          — bound past-due grace
@@ -35,5 +36,6 @@ export const { GET, POST, PUT } = serve({
     extractDocumentJob,
     spendSync,
     savingsReconciliation,
+    renewalAgent,
   ],
 });

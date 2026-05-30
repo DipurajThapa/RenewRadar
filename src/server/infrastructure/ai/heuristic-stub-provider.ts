@@ -25,8 +25,6 @@
  */
 import type {
   AIInsightProvider,
-  DecisionRecommendationInput,
-  DecisionRecommendationOutput,
   ExtractedFieldDraft,
   ExtractionInput,
   ExtractionProvider,
@@ -248,72 +246,6 @@ export class HeuristicStubProvider
       },
       summary: summaryParts.join(" "),
       highlights: highlights.slice(0, 4),
-    };
-  }
-
-  async recommendRenewalDecision(
-    input: DecisionRecommendationInput
-  ): Promise<DecisionRecommendationOutput> {
-    const dollarsFmt = formatDollars(
-      Math.round(input.annualValueCents / 100)
-    );
-
-    let recommendation: DecisionRecommendationOutput["recommendation"];
-    let rationale: string;
-    const negotiationLevers: string[] = [];
-    let confidence = 60;
-
-    if (input.noticeDeadlineMissed) {
-      recommendation = "deferred";
-      rationale = `The notice window for ${input.productName} has already closed. Renewal Radar can't recommend a forward-looking action — log what actually happened so the ledger is accurate.`;
-      confidence = 90;
-    } else if (input.riskBand === "high" && input.hasPriceIncreaseClause) {
-      recommendation = "renewed_with_adjustments";
-      rationale = `Risk is high (${dollarsFmt}/yr, ${input.daysUntilNoticeDeadline} days to deadline) and the contract includes a price-increase clause. A flat renewal almost always means a higher invoice — renegotiate.`;
-      negotiationLevers.push(
-        "Push back on the price-increase clause",
-        "Offer a multi-year commitment in exchange for a price hold",
-        "Pull a competing quote to anchor the conversation"
-      );
-      confidence = 80;
-    } else if (input.riskBand === "high" && !input.hasPriceIncreaseClause) {
-      recommendation = "renewed_with_adjustments";
-      rationale = `Risk is high (${dollarsFmt}/yr, ${input.daysUntilNoticeDeadline} days to deadline). Even without a price-increase clause, the size and urgency warrant a conversation before signing.`;
-      negotiationLevers.push(
-        "Audit current seat count — pay only for active users",
-        "Ask for payment-term improvements (net-60 vs net-30)"
-      );
-      confidence = 75;
-    } else if (
-      input.pastSavingsAnnualCents > 0 &&
-      input.daysUntilNoticeDeadline > 14
-    ) {
-      recommendation = "renewed_with_adjustments";
-      rationale = `You've successfully renegotiated with ${input.vendorName} before (${formatDollars(Math.round(input.pastSavingsAnnualCents / 100))} saved). The pattern is reproducible — start the renegotiation early.`;
-      negotiationLevers.push(
-        "Reference the prior savings outcome as the floor"
-      );
-      confidence = 78;
-    } else if (input.riskBand === "low" && input.annualValueCents < 100000) {
-      recommendation = "renewed";
-      rationale = `${input.productName} is a low-risk, ${dollarsFmt}/yr contract. A flat renewal is the highest-leverage decision for your time.`;
-      confidence = 70;
-    } else {
-      recommendation = "deferred";
-      rationale = `Signals are mixed (${input.riskBand} risk, ${dollarsFmt}/yr, ${input.daysUntilNoticeDeadline} days out). Pull usage data from the product owner before deciding.`;
-      confidence = 55;
-    }
-
-    return {
-      meta: {
-        provider: PROVIDER_NAME,
-        model: MODEL,
-        promptVersion: PROMPT_VERSION,
-        confidencePct: confidence,
-      },
-      recommendation,
-      rationale,
-      negotiationLevers: negotiationLevers.slice(0, 3),
     };
   }
 

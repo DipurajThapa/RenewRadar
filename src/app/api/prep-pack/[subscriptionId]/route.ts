@@ -6,6 +6,8 @@ import {
   TierFeatureDeniedError,
 } from "@server/domain/billing/tier-features";
 import { getSubscriptionDetail } from "@server/infrastructure/db/repositories/subscriptions";
+import { getLatestBrief } from "@server/application/renewal-brief";
+import type { RenewalIntelligenceBrief } from "@server/infrastructure/ai/reasoning/types";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import {
   calculateNoticeDeadline,
@@ -68,6 +70,12 @@ export async function GET(
     isMissed: detail.renewalEvent?.status === "missed",
   });
 
+  // The Renewal Intelligence Brief is the single recommendation source. When
+  // one exists for this subscription, the prep pack leads with its
+  // evidence-bound verdict instead of inventing a parallel one.
+  const briefRow = await getLatestBrief(account.id, params.subscriptionId);
+  const brief = briefRow?.briefJson as RenewalIntelligenceBrief | undefined;
+
   const pdf = await renderPrepPackPdf({
     vendorName: detail.vendor.name,
     productName: detail.subscription.productName,
@@ -93,6 +101,14 @@ export async function GET(
     riskBand: risk.band,
     accountName: account.name,
     generatedAtIso: today.toISOString(),
+    brief: brief
+      ? {
+          recommendedAction: brief.recommendedAction,
+          confidencePct: brief.meta.confidencePct,
+          headline: brief.headline,
+          engine: brief.meta.engine,
+        }
+      : null,
   });
 
   const filename = `prep-pack-${detail.vendor.name.toLowerCase().replace(/\s+/g, "-")}-${detail.subscription.termEndDate}.pdf`;

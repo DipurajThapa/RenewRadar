@@ -23,7 +23,8 @@ export type NotificationTrigger =
   | "welcome"
   | "intake_request_submitted"
   | "intake_request_decided"
-  | "vendor_announcement";
+  | "vendor_announcement"
+  | "compliance_doc_expiring";
 
 export const NOTIFICATION_TRIGGER_LABELS: Record<NotificationTrigger, string> = {
   notice_window_30: "Notice deadline in 30 days",
@@ -45,6 +46,7 @@ export const NOTIFICATION_TRIGGER_LABELS: Record<NotificationTrigger, string> = 
   intake_request_submitted: "New purchase request to review",
   intake_request_decided: "Your purchase request was reviewed",
   vendor_announcement: "Vendor update",
+  compliance_doc_expiring: "Compliance document expiring",
 };
 
 export function notificationTriggerLabel(trigger: string): string {
@@ -98,6 +100,13 @@ export function notificationDestinationUrl(
   }
   if (entityType === "intake_request" && entityId) {
     return `/requests/${entityId}`;
+  }
+  // Compliance-expiry alerts are entity-keyed on the artifact (for dedup), but
+  // the useful destination is the vendor's record where the doc lives. The
+  // artifact id isn't a route, so fall back to the vendors list; the email
+  // itself deep-links to the specific vendor.
+  if (entityType === "compliance_artifact") {
+    return "/vendors";
   }
   // T4.10 — vendor announcements land in the customer's vendor-updates inbox.
   if (

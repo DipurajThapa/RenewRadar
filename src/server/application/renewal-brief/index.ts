@@ -36,7 +36,10 @@ export class RenewalBriefError extends Error {
 export async function generateAndStoreBrief(input: {
   accountId: string;
   subscriptionId: string;
-  actorUserId: string;
+  /** null = the autonomous Renewal Agent (system actor). The audit log + vendor
+   *  event + createdByUserId all accept a null actor, so the brief carries
+   *  honest "system" provenance when auto-prepped. */
+  actorUserId: string | null;
   today?: Date;
 }): Promise<RenewalBrief> {
   // 1. Aggregate (multiple reads) — OUTSIDE any transaction.

@@ -218,6 +218,13 @@ function EventDetail({ kind, payload }: { kind: VendorEventKind; payload: unknow
             : ""}
         </p>
       );
+    case "compliance_doc_expired":
+      return (
+        <p className="text-xs text-amber-700 mt-1">
+          {String(p.artifactKind ?? "")}
+          {p.expiresAt ? ` · expires ${String(p.expiresAt).split("T")[0]}` : ""}
+        </p>
+      );
     case "notice_deadline_missed":
       return (
         <p className="text-xs text-red-700 mt-1">

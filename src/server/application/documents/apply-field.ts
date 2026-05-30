@@ -11,11 +11,14 @@
  *
  * Per-fieldKey targets:
  *   renewal_date           → subscription.termEndDate + renewal_event.{renewal,notice}_deadline
+ *   expiry_date            → (same as renewal_date — the obligation-generic alias)
  *   notice_period_days     → subscription.noticePeriodDays + recompute renewal_event.noticeDeadline
  *   auto_renewal           → subscription.autoRenew
  *   contract_value_cents   → subscription.{unitPriceCents,totalCostPerPeriodCents}
  *   price_increase_clause  → subscription.notes (appended; no first-class column yet)
  *   cancellation_method    → vendor.cancellationNotes (appended)
+ *   issuer                 → subscription.attributesJson.issuer (merge)
+ *   reference_number       → subscription.attributesJson.referenceNumber (merge)
  */
 import { and, eq } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
@@ -110,6 +113,11 @@ export async function applyExtractedField(input: {
     let afterSnapshot: Record<string, unknown> = {};
 
     switch (field.fieldKey) {
+      // `expiry_date` is the obligation-generic alias of `renewal_date`: a
+      // license/cert/policy "expires" where a SaaS contract "renews", but the
+      // source-of-truth column (termEndDate) and the downstream renewal_event
+      // are identical. Folding the cases keeps ONE write path, not two.
+      case "expiry_date":
       case "renewal_date": {
         const v = value as { date?: string } | null;
         if (!v?.date) return { ok: false, error: "No date to apply" };
@@ -226,6 +234,39 @@ export async function applyExtractedField(input: {
         await tx
           .update(subscriptionsTable)
           .set({ cancellationMethodCode: v.method })
+          .where(eq(subscriptionsTable.id, sub.id));
+        break;
+      }
+      // Obligation-generic attributes — issuer + reference number. No
+      // column-per-field; they merge into the polymorphic attributesJson so a
+      // license number, policy number, or notice reference rides the same row
+      // as every other renewal item without a schema change.
+      case "issuer": {
+        const v = value as { issuer?: string; value?: string } | null;
+        const issuer = (v?.issuer ?? v?.value)?.trim();
+        if (!issuer) return { ok: false, error: "No issuer to apply" };
+        const before = { ...(sub.attributesJson ?? {}) };
+        const after = { ...before, issuer };
+        beforeSnapshot = { attributesJson: before };
+        afterSnapshot = { attributesJson: after };
+        await tx
+          .update(subscriptionsTable)
+          .set({ attributesJson: after })
+          .where(eq(subscriptionsTable.id, sub.id));
+        break;
+      }
+      case "reference_number": {
+        const v = value as { reference?: string; value?: string } | null;
+        const reference = (v?.reference ?? v?.value)?.trim();
+        if (!reference)
+          return { ok: false, error: "No reference number to apply" };
+        const before = { ...(sub.attributesJson ?? {}) };
+        const after = { ...before, referenceNumber: reference };
+        beforeSnapshot = { attributesJson: before };
+        afterSnapshot = { attributesJson: after };
+        await tx
+          .update(subscriptionsTable)
+          .set({ attributesJson: after })
           .where(eq(subscriptionsTable.id, sub.id));
         break;
       }

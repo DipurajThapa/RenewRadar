@@ -128,56 +128,11 @@ describe("HeuristicStubProvider.summarizeVendorIntelligence", () => {
   });
 });
 
-describe("HeuristicStubProvider.recommendRenewalDecision", () => {
-  it("defers when the notice deadline has already passed", async () => {
-    const out = await provider.recommendRenewalDecision({
-      vendorName: "Atlassian",
-      productName: "Jira",
-      annualValueCents: 12_000_00,
-      autoRenew: true,
-      daysUntilNoticeDeadline: -2,
-      riskBand: "high",
-      hasPriceIncreaseClause: true,
-      pastSavingsAnnualCents: 0,
-      noticeDeadlineMissed: true,
-    });
-    expect(out.recommendation).toBe("deferred");
-    expect(out.rationale.toLowerCase()).toContain("closed");
-    expect(out.meta.confidencePct).toBeGreaterThanOrEqual(85);
-  });
-
-  it("recommends renegotiation when the contract carries a price-increase clause", async () => {
-    const out = await provider.recommendRenewalDecision({
-      vendorName: "Salesforce",
-      productName: "Sales Cloud",
-      annualValueCents: 200_000_00,
-      autoRenew: true,
-      daysUntilNoticeDeadline: 25,
-      riskBand: "high",
-      hasPriceIncreaseClause: true,
-      pastSavingsAnnualCents: 0,
-      noticeDeadlineMissed: false,
-    });
-    expect(out.recommendation).toBe("renewed_with_adjustments");
-    expect(out.negotiationLevers.length).toBeGreaterThan(0);
-    expect(out.rationale).toContain("price-increase");
-  });
-
-  it("recommends a flat renewal for small low-risk contracts", async () => {
-    const out = await provider.recommendRenewalDecision({
-      vendorName: "Loom",
-      productName: "Business",
-      annualValueCents: 600_00,
-      autoRenew: false,
-      daysUntilNoticeDeadline: 40,
-      riskBand: "low",
-      hasPriceIncreaseClause: false,
-      pastSavingsAnnualCents: 0,
-      noticeDeadlineMissed: false,
-    });
-    expect(out.recommendation).toBe("renewed");
-  });
-});
+// NOTE: `recommendRenewalDecision` was retired. The decide-now recommendation
+// is now owned end-to-end by the Renewal Intelligence Brief (the single
+// evidence-bound reasoning surface) — see
+// `src/server/infrastructure/ai/reasoning/__tests__/deterministic-reasoner.test.ts`
+// for its coverage, including the recommended-action claim.
 
 describe("HeuristicStubProvider.narrateSavings", () => {
   it("frames a cancellation as money returned to the budget", async () => {
@@ -259,7 +214,7 @@ describe("AnthropicNotConfiguredProvider", () => {
     ).rejects.toThrow(/Anthropic provider is not configured/);
   });
 
-  it("throws on each of the four insight methods", async () => {
+  it("throws on each of the three insight methods", async () => {
     const sharedHandler = (p: Promise<unknown>) =>
       expect(p).rejects.toThrow(/Anthropic provider is not configured/);
     await sharedHandler(
@@ -287,19 +242,6 @@ describe("AnthropicNotConfiguredProvider", () => {
         lastDecisionDate: null,
         complianceArtifacts: 0,
         expiringComplianceArtifacts: 0,
-      })
-    );
-    await sharedHandler(
-      anthropic.recommendRenewalDecision({
-        vendorName: "x",
-        productName: "y",
-        annualValueCents: 10_000_00,
-        autoRenew: false,
-        daysUntilNoticeDeadline: 10,
-        riskBand: "low",
-        hasPriceIncreaseClause: false,
-        pastSavingsAnnualCents: 0,
-        noticeDeadlineMissed: false,
       })
     );
     await sharedHandler(

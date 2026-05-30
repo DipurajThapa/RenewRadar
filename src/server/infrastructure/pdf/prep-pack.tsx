@@ -165,6 +165,19 @@ export type PrepPackData = {
   riskBand: "low" | "medium" | "high";
   accountName: string;
   generatedAtIso: string;
+  /**
+   * The Renewal Intelligence Brief's evidence-bound recommendation, when one
+   * has been generated for this subscription. The prep pack surfaces this as
+   * the headline recommendation (the single source of truth) and keeps the
+   * deterministic deadline guidance below it as supporting next-steps. Null
+   * when no brief exists — the deadline guidance stands alone.
+   */
+  brief: {
+    recommendedAction: string;
+    confidencePct: number;
+    headline: string;
+    engine: "deterministic" | "llm";
+  } | null;
 };
 
 function formatUsd(cents: number): string {
@@ -181,6 +194,21 @@ function addDaysIso(dateIso: string, days: number): string {
 }
 
 function recommendedAction(d: PrepPackData): string {
+  // Single source of truth: when a Renewal Intelligence Brief exists, its
+  // evidence-bound recommendation leads — the deterministic deadline guidance
+  // below stays as supporting next-steps. This is the same `recommendedAction`
+  // the decide-now page and the brief card show; the prep pack does NOT invent
+  // a competing verdict.
+  if (d.brief) {
+    const verb = d.brief.recommendedAction.replace(/_/g, " ");
+    const provenance =
+      d.brief.engine === "llm" ? "Claude" : "deterministic analysis";
+    return `Renewal Intelligence Brief recommends: ${verb.toUpperCase()} (${d.brief.confidencePct}% confidence, ${provenance}). ${d.brief.headline} ${deadlineGuidance(d)}`;
+  }
+  return deadlineGuidance(d);
+}
+
+function deadlineGuidance(d: PrepPackData): string {
   if (d.daysUntilNoticeDeadline < 0) {
     return `The notice deadline has passed by ${Math.abs(
       d.daysUntilNoticeDeadline

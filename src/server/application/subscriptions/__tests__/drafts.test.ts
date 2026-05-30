@@ -245,3 +245,45 @@ describe("createSubscriptionDraft cap + lock enforcement (REV-4)", () => {
     await expect(makeDraft(1)).rejects.toBeInstanceOf(AccountLockedError);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AI-first generalization: the draft path carries any obligation category
+// ─────────────────────────────────────────────────────────────────────────
+describe("createSubscriptionDraft is a polymorphic renewal-item intake", () => {
+  it("defaults to saas_subscription with empty attributes", async () => {
+    const sub = await createSubscriptionDraft({
+      accountId: ids.accountA.id,
+      actorUserId: ids.accountA.userId,
+      vendorName: "Linear",
+      productName: "Standard",
+      annualizedUsdCents: 1_000_00,
+    });
+    expect(sub.category).toBe("saas_subscription");
+    expect(sub.attributesJson).toEqual({});
+  });
+
+  it("creates a non-SaaS obligation (insurance policy) with type-specific attributes", async () => {
+    const sub = await createSubscriptionDraft({
+      accountId: ids.accountA.id,
+      actorUserId: ids.accountA.userId,
+      vendorName: "Acme Insurance",
+      productName: "General Liability Policy",
+      annualizedUsdCents: 12_000_00,
+      category: "insurance_policy",
+      attributes: { policyNumber: "POL-2026-001", jurisdiction: "CA" },
+    });
+    expect(sub.category).toBe("insurance_policy");
+    expect(sub.attributesJson).toMatchObject({
+      policyNumber: "POL-2026-001",
+      jurisdiction: "CA",
+    });
+    // It is a normal renewal item — same table, status, owner machinery.
+    expect(sub.status).toBe("draft");
+
+    const [row] = await db
+      .select()
+      .from(subscriptionsTable)
+      .where(eq(subscriptionsTable.id, sub.id));
+    expect(row!.category).toBe("insurance_policy");
+  });
+});

@@ -1,0 +1,1 @@
+ALTER TYPE "notification_trigger" ADD VALUE IF NOT EXISTS 'compliance_doc_expiring';

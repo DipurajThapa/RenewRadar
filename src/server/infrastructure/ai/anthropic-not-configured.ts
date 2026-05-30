@@ -24,8 +24,6 @@
  */
 import type {
   AIInsightProvider,
-  DecisionRecommendationInput,
-  DecisionRecommendationOutput,
   ExtractionInput,
   ExtractionProvider,
   ExtractionResult,
@@ -110,12 +108,6 @@ export class AnthropicNotConfiguredProvider
   async summarizeVendorIntelligence(
     _input: VendorIntelligenceInput
   ): Promise<VendorIntelligenceOutput> {
-    throw new Error(NOT_CONFIGURED_MESSAGE);
-  }
-
-  async recommendRenewalDecision(
-    _input: DecisionRecommendationInput
-  ): Promise<DecisionRecommendationOutput> {
     throw new Error(NOT_CONFIGURED_MESSAGE);
   }
 
