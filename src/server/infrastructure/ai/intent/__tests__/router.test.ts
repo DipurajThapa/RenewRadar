@@ -60,7 +60,7 @@ describe("getIntentRouter env gating", () => {
 // can't route them (no fixed keyword matches); the semantic router can. This is
 // the proof that the AI is NOT a removable veneer over the keyword engine.
 const PARAPHRASES: Array<{ q: string; correct: AskIntent }> = [
-  { q: "Which subscription could hurt us the most?", correct: "account_risk" },
+  { q: "Where are we bleeding money?", correct: "account_risk" },
   { q: "Do comparable companies get a better rate than us?", correct: "vendor_benchmark" },
   { q: "What's about to lapse?", correct: "upcoming_renewals" },
   { q: "Give me the big picture on our software costs.", correct: "kpis" },

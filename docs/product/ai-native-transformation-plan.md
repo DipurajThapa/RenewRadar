@@ -328,8 +328,26 @@ Category A — the "is it an AI product?" flip:
   correctly. Live: the real qwen3.6 router got ≥3/4 right while the keyword
   router got 0/4 — the AI is not a removable veneer.
 
-Remaining Phase-3 follow-ons (larger, optional): light up the dormant vector
-retriever for semantic search; multi-document synthesis.
+### A hardened to A+ (revisit pass)
+
+The two deferred load-bearing capabilities are now built — the dormant retriever
+is lit up and multi-document synthesis exists:
+
+- **Vector retrieval, lit up.** A real embeddings seam (`infrastructure/ai/embeddings`):
+  `LexicalEmbeddingsProvider` (deterministic hashed char-ngram vectors, DIM 4096 —
+  the model-free default that works in CI) + `OllamaEmbeddingsProvider` (neural via
+  `LOCAL_EMBED_MODEL`, self-falls-back to lexical). For an off-menu (`unknown`)
+  question, `semanticRetrieveFacts` gathers a BROAD pool of the account's REAL facts,
+  embeds + cosine-ranks, and surfaces the relevant ones — with a shared-content-word
+  precision gate so noise ("weather?") returns honest []. Facts stay SQL-grounded;
+  embeddings only re-rank. **Load-bearing proven:** the keyword dispatch returns []
+  for an off-menu risk question; semantic retrieval surfaces the real risk facts.
+- **Multi-document synthesis.** A `cross_document` intent + gatherer emits one
+  comparable fact PER contract (`listSubscriptions`), so "which of my subscriptions
+  has the strictest notice period?" reasons ACROSS several documents. Tested: the
+  answer's evidence spans ≥2 subscriptions, grounded, tenant-scoped.
+- The LIVE neural embedding path needs `ollama pull nomic-embed-text` (no embed model
+  is installed); the lexical default ships working today, neural is a config swap.
 
 ## Phase 4 status — core DONE ✅ (production serving)
 

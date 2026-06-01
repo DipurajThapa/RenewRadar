@@ -22,7 +22,21 @@ import { listRenewalsInRange } from "@server/infrastructure/db/repositories/rene
 import { getSavingsTotals } from "@server/infrastructure/db/repositories/savings";
 import { listExpiringComplianceArtifacts } from "@server/infrastructure/db/repositories/compliance";
 import { getDashboardKpis } from "@server/infrastructure/db/repositories/dashboard";
+import { listSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
 import { formatCurrency } from "@shared/utils";
+
+/** Annualize a per-period cost so cross-contract comparison is apples-to-apples. */
+function annualizeCents(perPeriodCents: number, billingCycle: string): number {
+  const c = billingCycle.toLowerCase();
+  const mult = c.includes("month")
+    ? 12
+    : c.includes("quarter")
+      ? 4
+      : c.includes("week")
+        ? 52
+        : 1; // annual / yearly / unknown
+  return perPeriodCents * mult;
+}
 
 function fact(
   source: string,
@@ -194,6 +208,23 @@ export async function retrieveFacts(
           "/dashboard"
         ),
       ];
+    }
+
+    case "cross_document": {
+      // Multi-document synthesis: one comparable fact PER subscription (each its
+      // own contract), so a "which / compare / strictest" question has facts
+      // spanning several documents for the reasoner to synthesize across.
+      const subs = await listSubscriptions(accountId);
+      if (subs.length === 0) return [];
+      return subs.slice(0, 12).map((s) =>
+        fact(
+          "subscription",
+          `${s.vendorName} — ${s.productName}: ${formatCurrency(annualizeCents(s.totalCostPerPeriodCents, s.billingCycle))}/yr, ` +
+            `notice ${s.noticePeriodDays} days, ${s.autoRenew ? "auto-renews" : "no auto-renew"}, term ends ${s.termEndDate}.`,
+          `/subscriptions/${s.id}`,
+          s.id
+        )
+      );
     }
 
     case "unknown":
