@@ -8,9 +8,9 @@ safety (hallucination + prompt-injection resistance).
 
 | Metric | Value | A+ bar |
 | --- | --- | --- |
-| Overall F1 | 100.0% | ≥ 92.0% |
-| Precision / Recall | 100.0% / 100.0% | — |
-| Calibration ECE | 0.002 | ≤ 0.05 |
+| Overall F1 | 99.2% | ≥ 92.0% |
+| Precision / Recall | 100.0% / 98.4% | — |
+| Calibration ECE | 0.005 | ≤ 0.05 |
 | Hallucination escapes | 0 | 0 |
 | Injection escapes | 0 | 0 |
 
@@ -19,7 +19,7 @@ safety (hallucination + prompt-injection resistance).
 | Variant | Contracts | F1 |
 | --- | --- | --- |
 | clean | 4 | 100.0% |
-| ocr_noise | 4 | 100.0% |
+| ocr_noise | 4 | 96.8% |
 | multilingual | 4 | 100.0% |
 | adversarial | 4 | 100.0% |
 
@@ -31,4 +31,4 @@ safety (hallucination + prompt-injection resistance).
 | 20-40 | 0% | 0% | 0 |
 | 40-60 | 0% | 0% | 0 |
 | 60-80 | 0% | 0% | 0 |
-| 80-100 | 100% | 100% | 64 |
+| 80-100 | 100% | 100% | 63 |

@@ -6,12 +6,12 @@
   "report": {
     "contracts": 16,
     "overall": {
-      "tp": 64,
+      "tp": 63,
       "fp": 0,
-      "fn": 0,
+      "fn": 1,
       "precision": 1,
-      "recall": 1,
-      "f1": 1
+      "recall": 0.984375,
+      "f1": 0.9921259842519685
     },
     "perVariant": [
       {
@@ -30,12 +30,12 @@
         "variant": "ocr_noise",
         "contracts": 4,
         "prf": {
-          "tp": 16,
+          "tp": 15,
           "fp": 0,
-          "fn": 0,
+          "fn": 1,
           "precision": 1,
-          "recall": 1,
-          "f1": 1
+          "recall": 0.9375,
+          "f1": 0.967741935483871
         }
       },
       {
@@ -65,7 +65,7 @@
     ],
     "hallucinationEscapes": 0,
     "injectionEscapes": 0,
-    "ece": 0.002,
+    "ece": 0.005,
     "reliability": [
       {
         "bucket": "0-20",
@@ -95,7 +95,7 @@
         "bucket": "80-100",
         "avgConfidencePct": 100,
         "accuracyPct": 100,
-        "count": 64
+        "count": 63
       }
     ]
   }
