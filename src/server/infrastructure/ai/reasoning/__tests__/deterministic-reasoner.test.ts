@@ -181,8 +181,19 @@ describe("validateBrief — honesty enforcement", () => {
 });
 
 describe("getReasoningProvider provenance", () => {
-  it("defaults to the deterministic reasoner with no flag/key", () => {
+  it("defaults to the LOCAL-LLM reasoner (AI-first) when no flag is set", () => {
+    const prev = process.env.AI_REASONING_PROVIDER;
     delete process.env.AI_REASONING_PROVIDER;
+    _resetReasoningProviderForTests();
+    // The shipped default is now AI-first (it self-falls-back to deterministic
+    // per-call if the model is unreachable).
+    expect(getReasoningProvider().providerName).toBe("ollama-reasoner");
+    process.env.AI_REASONING_PROVIDER = prev;
+    _resetReasoningProviderForTests();
+  });
+
+  it("uses the deterministic reasoner when explicitly selected", () => {
+    process.env.AI_REASONING_PROVIDER = "deterministic";
     _resetReasoningProviderForTests();
     expect(getReasoningProvider().providerName).toBe("deterministic-reasoner");
   });

@@ -6,8 +6,8 @@
  * It stores nothing, writes no audit log, and never crosses the autonomy
  * boundary — it only answers from the account's own data.
  */
-import { classifyIntent } from "@server/domain/assistant/intent";
 import { getReasoningProvider } from "@server/infrastructure/ai";
+import { getIntentRouter } from "@server/infrastructure/ai/intent/router";
 import type { GroundedAnswer } from "@server/infrastructure/ai/reasoning/types";
 import { getRetriever } from "@server/infrastructure/retriever";
 import { retrieveFacts } from "./retrieve";
@@ -16,7 +16,10 @@ export async function answerAccountQuestion(
   accountId: string,
   question: string
 ): Promise<GroundedAnswer> {
-  const intent = classifyIntent(question);
+  // Semantic intent routing when AI is on (understands paraphrases/typos), with
+  // a deterministic keyword fallback. The deterministic keyword router can't do
+  // this — it only matches fixed keywords.
+  const intent = await getIntentRouter().classify(question);
 
   // Prefer a configured vector retriever; otherwise the deterministic SQL
   // dispatch (the shipped default).

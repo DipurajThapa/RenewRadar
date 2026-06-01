@@ -264,5 +264,28 @@ Category E pushed toward A+, enforced by tests (not convention):
   notification infrastructure — advisor-not-agent, enforced by tooling.
 
 Verified by `pnpm ai:review` after the changes (VERDICT PASS — no quality
-regression). Next: Phase 3 (AI on by default — the big "is it an AI product"
-flip), per the roadmap.
+regression).
+
+## Phase 3 status — core DONE ✅ (AI on by default + load-bearing)
+
+Category A — the "is it an AI product?" flip:
+
+- **A1 — AI is the default.** `AI_REASONING_PROVIDER` and `AI_EXTRACTION_PROVIDER`
+  now default to the local LLM. A user who signs up (with a model running) gets
+  the LLM, not the deterministic engine. Tests pin deterministic via `.env.test`
+  (fast, no model needed); production sets a served endpoint or deterministic.
+  Proven live: with no provider env set, `getReasoningProvider()` → `ollama-reasoner`,
+  `engine: llm`.
+- **A2 — semantic intent router** (the load-bearing capability). The brittle
+  keyword `classifyIntent` is replaced by an `IntentRouter` seam — `LlmIntentRouter`
+  (semantic) over a `KeywordIntentRouter` fallback, env-gated. Understanding
+  paraphrases/typos/novel phrasings is something the keyword engine structurally
+  cannot do.
+- **A3 — "AI is load-bearing" test.** A set of natural questions the keyword
+  router returns "unknown" for (proven offline) that the semantic router routes
+  correctly. Live: the real qwen3.6 router got ≥3/4 right while the keyword
+  router got 0/4 — the AI is not a removable veneer.
+
+Remaining Phase-3 follow-ons (larger, optional): light up the dormant vector
+retriever for semantic search; multi-document synthesis. Next major phase: Phase 4
+(production serving — B).
