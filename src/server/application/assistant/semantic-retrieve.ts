@@ -13,7 +13,11 @@
  */
 import type { AskIntent } from "@server/domain/assistant/intent";
 import type { RetrievedFact } from "@server/infrastructure/ai/reasoning/types";
-import { getEmbeddingsProvider, rankBySimilarity } from "@server/infrastructure/ai/embeddings";
+import {
+  getEmbeddingsProvider,
+  rankBySimilarity,
+  type RankedItem,
+} from "@server/infrastructure/ai/embeddings";
 import { retrieveFacts } from "./retrieve";
 
 /** Account-wide gatherers that don't need a named entity — the candidate pool. */
@@ -27,37 +31,42 @@ const GATHER_INTENTS: AskIntent[] = [
 ];
 
 const TOP_K = 6;
-/** Minimum cosine for a fact to count as relevant — below this, drop (honest
- *  "no data" rather than answering from noise). Lexical-embedding scale. */
-const SCORE_FLOOR = 0.06;
-/** A cosine this high is trusted even without a shared word — lets a NEURAL
- *  embedding's synonym match ("priciest" ↔ "cost") through, while lexical noise
- *  (which scores far lower) still needs a real shared word below. */
-const NEURAL_TRUST = 0.35;
+/**
+ * Relevance is a per-model ABSOLUTE cosine floor + a top-cluster band. The floor
+ * is model-specific because the cosine SCALE differs — measured on the real fact
+ * pool: an unrelated question ("weather in Tokyo") scores ≈0 lexical / ≈0.10 with
+ * `all-minilm`, while genuinely on-topic questions (even pure synonyms like
+ * "what should I be worried about?", which shares NO words) score ≈0.4 lexical /
+ * ≈0.27–0.50 neural. The floor sits in that clean gap.
+ *
+ * NOTE: this floor is calibrated for `all-minilm` (short-text sentence-similarity).
+ * `nomic-embed-text` does NOT separate cleanly on short structured fact strings
+ * (weather ≈0.51 ≈ on-topic) — proven, and why all-minilm is the default below.
+ */
+const LEXICAL_FLOOR = 0.12;
+const NEURAL_FLOOR = 0.18;
+/** Keep only the most-relevant cluster — facts within this cosine of the top. */
+const KEEP_BAND = 0.15;
 
-const STOP = new Set([
-  "the", "a", "an", "of", "to", "in", "on", "for", "and", "or", "is", "are",
-  "my", "our", "we", "i", "you", "what", "whats", "how", "when", "where",
-  "which", "who", "why", "any", "much", "many", "do", "does", "with", "at",
-]);
-
-function contentWords(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9 ]+/g, " ")
-      .split(/\s+/)
-      .filter((t) => t.length >= 3 && !STOP.has(t))
-  );
-}
-
-/** True if the question and fact share at least one real (content) word. The
- *  precision gate that stops incidental n-gram overlap (e.g. "weather") from
- *  faking relevance under the lexical embedding. */
-function sharesContentWord(question: string, detail: string): boolean {
-  const q = contentWords(question);
-  for (const w of contentWords(detail)) if (q.has(w)) return true;
-  return false;
+/**
+ * Relevance selection (pure — unit-tested). Returns the relevant facts, or [] when
+ * the best match doesn't clear the model's floor (honest "no data"). Robust to a
+ * homogeneous pool (a tiny single-renewal account): an absolute floor keeps every
+ * on-topic fact, where a separation test would wrongly find "nothing stands out".
+ */
+export function selectRelevant(
+  _question: string,
+  ranked: Array<RankedItem<RetrievedFact>>,
+  opts: { isNeural: boolean }
+): RetrievedFact[] {
+  if (ranked.length === 0) return [];
+  const floor = opts.isNeural ? NEURAL_FLOOR : LEXICAL_FLOOR;
+  const top = ranked[0]!.score; // ranked is descending
+  if (top < floor) return []; // nothing clears the bar → honest no-data
+  return ranked
+    .filter((r) => r.score >= Math.max(floor, top - KEEP_BAND))
+    .slice(0, TOP_K)
+    .map((r) => r.item);
 }
 
 export function semanticRetrievalEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -103,16 +112,9 @@ export async function semanticRetrieveFacts(
   const factVecs = vecs.slice(1);
   const ranked = rankBySimilarity(queryVec, candidates, factVecs);
 
-  // 3. Keep only meaningfully-relevant facts: a real shared word + floor cosine,
-  //    OR a high enough cosine to trust on its own (neural synonym match). If
-  //    nothing qualifies, the reasoner gets [] and answers honestly.
-  const relevant = ranked
-    .filter(
-      (r) =>
-        (r.score >= SCORE_FLOOR && sharesContentWord(question, r.item.detail)) ||
-        r.score >= NEURAL_TRUST
-    )
-    .slice(0, TOP_K)
-    .map((r) => r.item);
-  return relevant;
+  // 3. Keep only what stands out (separation gate — scale-robust for lexical AND
+  //    neural). Nothing stands out → the reasoner gets [] and answers honestly.
+  return selectRelevant(question, ranked, {
+    isNeural: embedder.providerName !== "lexical",
+  });
 }

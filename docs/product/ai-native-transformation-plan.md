@@ -333,15 +333,23 @@ Category A — the "is it an AI product?" flip:
 The two deferred load-bearing capabilities are now built — the dormant retriever
 is lit up and multi-document synthesis exists:
 
-- **Vector retrieval, lit up.** A real embeddings seam (`infrastructure/ai/embeddings`):
-  `LexicalEmbeddingsProvider` (deterministic hashed char-ngram vectors, DIM 4096 —
-  the model-free default that works in CI) + `OllamaEmbeddingsProvider` (neural via
-  `LOCAL_EMBED_MODEL`, self-falls-back to lexical). For an off-menu (`unknown`)
-  question, `semanticRetrieveFacts` gathers a BROAD pool of the account's REAL facts,
-  embeds + cosine-ranks, and surfaces the relevant ones — with a shared-content-word
-  precision gate so noise ("weather?") returns honest []. Facts stay SQL-grounded;
-  embeddings only re-rank. **Load-bearing proven:** the keyword dispatch returns []
-  for an off-menu risk question; semantic retrieval surfaces the real risk facts.
+- **Vector retrieval, lit up — and NEURAL proven live.** A real embeddings seam
+  (`infrastructure/ai/embeddings`): `LexicalEmbeddingsProvider` (deterministic hashed
+  char-ngram vectors, DIM 4096 — the model-free default, works in CI) +
+  `OllamaEmbeddingsProvider` (neural; self-falls-back to lexical). For an off-menu
+  (`unknown`) question, `semanticRetrieveFacts` gathers a BROAD pool of the account's
+  REAL facts, embeds + ranks, and keeps only what clears a per-model relevance floor.
+  Facts stay SQL-grounded; embeddings only re-rank.
+  - **Honest model finding (measured, not assumed):** the relevance gate is a
+    per-model ABSOLUTE cosine floor, NOT separation — and the model matters.
+    `nomic-embed-text` does NOT work on our short structured fact strings ("weather
+    in Tokyo" ≈0.51 ≈ on-topic 0.55). `all-minilm` does (weather ≈0.10 vs on-topic
+    0.27–0.50) — so all-minilm is the neural default.
+  - **Load-bearing PROVEN LIVE** (`neural-retrieval.test.ts`, RUN_LLM_INTEGRATION):
+    with all-minilm, "what should I be **worried** about?" — which shares NO word
+    with "Biggest **risk**: …" — surfaces the real risk facts (pure-synonym match
+    only neural can do), while "weather in Tokyo" → [] (honest). The lexical default
+    handles shared-term paraphrases; neural adds true synonyms.
 - **Multi-document synthesis.** A `cross_document` intent + gatherer emits one
   comparable fact PER contract (`listSubscriptions`), so "which of my subscriptions
   has the strictest notice period?" reasons ACROSS several documents. Tested: the
