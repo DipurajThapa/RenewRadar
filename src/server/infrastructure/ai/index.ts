@@ -151,6 +151,27 @@ export function _resetReasoningProviderForTests(
   cachedReasoning = provider ?? null;
 }
 
+let cachedFallbackReasoning: ReasoningProvider | null = null;
+
+/**
+ * The deterministic reasoner, explicitly. Used as the "degraded mode" served when
+ * an account is over its monthly AI-reasoning budget (F3) — free, grounded, and
+ * never an LLM call. Separate from `getReasoningProvider()` so the budget guard
+ * can force it regardless of the configured default.
+ */
+export function getFallbackReasoningProvider(): ReasoningProvider {
+  if (!cachedFallbackReasoning) {
+    cachedFallbackReasoning = new DeterministicReasoningProvider();
+  }
+  return cachedFallbackReasoning;
+}
+
+export function _resetFallbackReasoningProviderForTests(
+  provider?: ReasoningProvider | null
+): void {
+  cachedFallbackReasoning = provider ?? null;
+}
+
 export type { ReasoningProvider, RenewalIntelligenceBrief, RenewalBriefInput } from "./reasoning/types";
 
 export type {

@@ -906,6 +906,40 @@ export const aiExtractionRunsTable = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AI Reasoning Usage — one row per metered LLM reasoning op (brief / Ask). The
+// reasoning analog of ai_extraction_run.pagesCharged: the ledger the per-account
+// monthly spend cap (F3) sums over. Local inference is free, but each row carries
+// the hosted-equivalent cost so the cap is meaningful on a served deployment.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const aiReasoningUsageTable = pgTable(
+  "ai_reasoning_usage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    /** "brief" | "ask" — which reasoning surface produced the call. */
+    surface: text("surface").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    /** Hosted-equivalent cost in micro-USD (1/1,000,000 $) so sums are exact. */
+    costUsdMicros: integer("cost_usd_micros").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    accountCreatedIdx: index("ai_reasoning_usage_account_created_idx").on(
+      t.accountId,
+      t.createdAt
+    ),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AI Extracted Field — one row per field per run, the unit of human review
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2378,6 +2412,10 @@ export type AiExtractionRun = typeof aiExtractionRunsTable.$inferSelect;
 export type NewAiExtractionRun = typeof aiExtractionRunsTable.$inferInsert;
 export type AiExtractionRunStatus =
   (typeof aiExtractionRunStatusEnum.enumValues)[number];
+
+export type AiReasoningUsage = typeof aiReasoningUsageTable.$inferSelect;
+export type NewAiReasoningUsage = typeof aiReasoningUsageTable.$inferInsert;
+export type AiReasoningSurface = "brief" | "ask";
 
 export type AiExtractedField = typeof aiExtractedFieldsTable.$inferSelect;
 export type NewAiExtractedField = typeof aiExtractedFieldsTable.$inferInsert;

@@ -1,15 +1,22 @@
 /**
- * Grounded Ask assistant composer. The whole pipeline is READ-ONLY:
+ * Grounded Ask assistant composer. The reasoning pipeline is advisor-only:
  *   classify → retrieve (deterministic dispatch, or a configured vector
- *   provider) → reason (getReasoningProvider().answerQuestion, which applies
- *   `validateAnswer` internally) → return.
- * It stores nothing, writes no audit log, and never crosses the autonomy
- * boundary — it only answers from the account's own data.
+ *   provider) → reason (answerQuestion, which applies `validateAnswer`
+ *   internally) → return. It never crosses the autonomy boundary — it only
+ *   answers from the account's own data and takes no external action.
+ *
+ * The ONE write it makes is internal metering: the token cost of an allowed LLM
+ * call is recorded to the per-account reasoning ledger (F3), exactly like the
+ * AI-pages cap meters extraction. Over budget, the deterministic engine answers
+ * for free and nothing is recorded.
  */
-import { getReasoningProvider } from "@server/infrastructure/ai";
 import { getIntentRouter } from "@server/infrastructure/ai/intent/router";
 import type { GroundedAnswer } from "@server/infrastructure/ai/reasoning/types";
 import { getRetriever } from "@server/infrastructure/retriever";
+import {
+  recordReasoningSpend,
+  resolveReasoningProvider,
+} from "@server/application/ai-budget";
 import { retrieveFacts } from "./retrieve";
 
 export async function answerAccountQuestion(
@@ -28,5 +35,13 @@ export async function answerAccountQuestion(
     ? await vector.retrieve({ accountId, question, intent })
     : await retrieveFacts(accountId, intent, question);
 
-  return getReasoningProvider().answerQuestion({ question, facts });
+  // Pick the provider under the account's monthly reasoning budget (F3): within
+  // budget → configured engine; over budget → deterministic (free).
+  const budget = await resolveReasoningProvider(accountId);
+  const answer = await budget.provider.answerQuestion({ question, facts });
+
+  // Charge the actual token cost (no-op for the deterministic/offline path).
+  await recordReasoningSpend({ accountId, surface: "ask", meta: answer.meta });
+
+  return answer;
 }

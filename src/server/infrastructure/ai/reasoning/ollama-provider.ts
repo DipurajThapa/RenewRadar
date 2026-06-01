@@ -35,9 +35,27 @@ import type {
 import { validateAnswer, validateBrief } from "./validate";
 import { DeterministicReasoningProvider } from "./deterministic-provider";
 import { LocalLlmClient } from "../local-llm/client";
+import {
+  estimateCostUsdMicros,
+  resolvePricing,
+  type TokenUsage,
+} from "../local-llm/usage";
 import { createLogger } from "@server/infrastructure/observability/logger";
 
 const log = createLogger({ component: "ai.reasoning.ollama" });
+
+/** Token pricing for stamping hosted-equivalent cost on the result meta (F3). */
+const pricing = resolvePricing();
+
+/** Build the `meta.usage` block from a completed call's token usage. */
+function usageMeta(usage: TokenUsage | null) {
+  if (!usage || usage.totalTokens <= 0) return undefined;
+  return {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    costUsdMicros: estimateCostUsdMicros(usage, pricing),
+  };
+}
 
 const EVIDENCE_SOURCES: BriefEvidence["source"][] = [
   "charge_history",
@@ -228,10 +246,14 @@ export class OllamaReasoningProvider implements ReasoningProvider {
     // fails — it is both our numeric source of truth and our fallback.
     const fallback = await this.deterministic.buildBrief(input);
 
+    let usage: TokenUsage | null = null;
     try {
       const raw = await this.client.chatJson<RawBrief>({
         system: BRIEF_SYSTEM_PROMPT,
         user: JSON.stringify(input),
+        onUsage: (u) => {
+          usage = u;
+        },
       });
 
       const claims: BriefClaim[] = (raw.claims ?? [])
@@ -289,6 +311,7 @@ export class OllamaReasoningProvider implements ReasoningProvider {
           confidencePct: metaConfidence(finalClaims),
           engine: "llm",
           briefVersion: "brief-v1",
+          usage: usageMeta(usage),
         },
         headline: "",
         // A missed notice deadline is a hard FACT, not a judgment call — enforce
@@ -313,7 +336,9 @@ export class OllamaReasoningProvider implements ReasoningProvider {
           subscriptionId: input.subscriptionId,
           model: this.model,
         });
-        return fallback;
+        // The call still consumed tokens — bill them even though we discarded
+        // the output and serve the deterministic brief.
+        return { ...fallback, meta: { ...fallback.meta, usage: usageMeta(usage) } };
       }
 
       return validated;
@@ -323,7 +348,9 @@ export class OllamaReasoningProvider implements ReasoningProvider {
         model: this.model,
         error: (err as Error)?.message ?? String(err),
       });
-      return fallback;
+      // usage is null unless a call completed before a later throw — usageMeta
+      // returns undefined in the common (server down / timeout) case.
+      return { ...fallback, meta: { ...fallback.meta, usage: usageMeta(usage) } };
     }
   }
 
@@ -336,10 +363,14 @@ export class OllamaReasoningProvider implements ReasoningProvider {
     // model. This is the advisor-not-agent / no-hallucination floor.
     if (input.facts.length === 0) return fallback;
 
+    let usage: TokenUsage | null = null;
     try {
       const raw = await this.client.chatJson<RawAnswer>({
         system: ASK_SYSTEM_PROMPT,
         user: JSON.stringify(input),
+        onUsage: (u) => {
+          usage = u;
+        },
       });
 
       const answers: AnswerClaim[] = (raw.answers ?? [])
@@ -374,6 +405,7 @@ export class OllamaReasoningProvider implements ReasoningProvider {
             ? Math.max(...answers.map((a) => a.confidencePct))
             : 60,
           engine: "llm",
+          usage: usageMeta(usage),
         },
         question: input.question,
         summary:
@@ -398,7 +430,7 @@ export class OllamaReasoningProvider implements ReasoningProvider {
       // deterministic answer (which is built directly from those facts).
       if (validated.answers.length === 0 && input.facts.length > 0) {
         log.warn("answer_no_grounded_claims_fell_back", { model: this.model });
-        return fallback;
+        return { ...fallback, meta: { ...fallback.meta, usage: usageMeta(usage) } };
       }
 
       return validated;
@@ -407,7 +439,7 @@ export class OllamaReasoningProvider implements ReasoningProvider {
         model: this.model,
         error: (err as Error)?.message ?? String(err),
       });
-      return fallback;
+      return { ...fallback, meta: { ...fallback.meta, usage: usageMeta(usage) } };
     }
   }
 }

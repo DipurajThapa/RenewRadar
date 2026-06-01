@@ -62,6 +62,15 @@ export type TierDefinition = {
      */
     aiExtractionPagesPerMonth: number; // Infinity for enterprise
     /**
+     * Cap on AI REASONING spend (briefs + Ask) per calendar month, in micro-USD
+     * at the hosted-equivalent rate. Enforced at the reasoning entry points
+     * (`generateAndStoreBrief`, `answerAccountQuestion`): over the cap, the
+     * deterministic engine serves for free (degrade, never overbill). Soft cap —
+     * token cost is only known after a call, so worst-case overshoot is one
+     * in-flight call. Infinity for enterprise.
+     */
+    aiReasoningUsdMicrosPerMonth: number; // Infinity for enterprise
+    /**
      * Total bytes of uploaded documents the account can hold. Enforced at
      * upload time in `uploadDocument`. Soft message at 80% used; hard
      * refusal at the cap. Infinity for enterprise.
@@ -116,6 +125,9 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       // 5 pages/mo = enough to extract one short contract. The single best
       // activation signal we have. After this they hit the wall and upgrade.
       aiExtractionPagesPerMonth: 5,
+      // ~$0.25/mo hosted-equivalent of reasoning (≈1k briefs/Ask) — generous for
+      // free's tiny inventory; over it, the deterministic engine serves for free.
+      aiReasoningUsdMicrosPerMonth: 250_000,
       maxStorageBytes: 100 * 1024 * 1024, // 100 MB
     },
     ctaLabel: "Start free",
@@ -147,6 +159,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: 50,
       maxUsers: 3,
       aiExtractionPagesPerMonth: 200,
+      aiReasoningUsdMicrosPerMonth: 5_000_000, // ~$5/mo hosted-equivalent
       maxStorageBytes: 2 * 1024 * 1024 * 1024, // 2 GB
     },
     ctaLabel: "Start 14-day trial",
@@ -185,6 +198,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: 200,
       maxUsers: 10,
       aiExtractionPagesPerMonth: 1_000,
+      aiReasoningUsdMicrosPerMonth: 25_000_000, // ~$25/mo hosted-equivalent
       maxStorageBytes: 20 * 1024 * 1024 * 1024, // 20 GB
     },
     ctaLabel: "Start 14-day trial",
@@ -221,6 +235,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: 500,
       maxUsers: 25,
       aiExtractionPagesPerMonth: 5_000,
+      aiReasoningUsdMicrosPerMonth: 100_000_000, // ~$100/mo hosted-equivalent
       maxStorageBytes: 200 * 1024 * 1024 * 1024, // 200 GB
     },
     ctaLabel: "Start 14-day trial",
@@ -255,6 +270,7 @@ export const TIER_DEFINITIONS: Record<PlanTier, TierDefinition> = {
       maxSubscriptions: Number.POSITIVE_INFINITY,
       maxUsers: Number.POSITIVE_INFINITY,
       aiExtractionPagesPerMonth: Number.POSITIVE_INFINITY,
+      aiReasoningUsdMicrosPerMonth: Number.POSITIVE_INFINITY,
       maxStorageBytes: Number.POSITIVE_INFINITY,
     },
     ctaLabel: "Talk to sales",

@@ -342,10 +342,18 @@ cost, so the business case is known before any capacity is purchased.
   docs** per model and recommends by **accuracy × latency × cost**. Live (2 models
   × 2 contracts): `qwen3.6` F1 100% @ $0.22/1k docs vs `llama3.1-storm` F1 71% @
   $0.18/1k — cheaper but fails the quality bar, so qwen3.6 wins on value too.
-- **F3 — per-account budget guard.** `checkBudget(used, cap)` (pure, tested) mirrors
-  the existing AI-pages cap: over the monthly spend cap → denied, and the caller
-  serves the deterministic engine for free (degrade, never overbill). A cap of 0 =
-  unlimited.
+- **F3 — per-account budget, ENFORCED.** A new `ai_reasoning_usage` ledger (the
+  reasoning analog of `ai_extraction_run.pagesCharged`) + a per-tier
+  `aiReasoningUsdMicrosPerMonth` cap. Both reasoning entry points
+  (`generateAndStoreBrief`, `answerAccountQuestion`) now call
+  `resolveReasoningProvider`: under cap → the configured engine; **over cap → the
+  deterministic engine (free, grounded — degrade, never overbill)**. The actual
+  token cost of an allowed LLM call rides on `meta.usage` and is recorded to the
+  ledger (`recordReasoningSpend`, atomic with the brief insert). Soft cap — token
+  cost is only known post-call, so worst-case overshoot is one in-flight call.
+  Tested: over-budget forces deterministic (no LLM call), tenant-scoped, enterprise
+  uncapped. *(Earlier this was a pure, unenforced `checkBudget` — that was the leak;
+  it is now wired.)*
 - **F4 — caching as a cost lever.** `pnpm ai:cost` runs real reasoning ops, meters
   them, prices them, and projects monthly cost. Live (qwen3.6): **1242 tokens/op,
   $0.21/1k ops**; a warm second pass over identical inputs fired **0** new model
