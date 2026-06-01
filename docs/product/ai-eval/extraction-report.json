@@ -1,0 +1,102 @@
+{
+  "provider": "ollama-extractor",
+  "model": "qwen3.6:latest",
+  "seed": 20260601,
+  "count": 16,
+  "report": {
+    "contracts": 16,
+    "overall": {
+      "tp": 64,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    },
+    "perVariant": [
+      {
+        "variant": "clean",
+        "contracts": 4,
+        "prf": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      },
+      {
+        "variant": "ocr_noise",
+        "contracts": 4,
+        "prf": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      },
+      {
+        "variant": "multilingual",
+        "contracts": 4,
+        "prf": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      },
+      {
+        "variant": "adversarial",
+        "contracts": 4,
+        "prf": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      }
+    ],
+    "hallucinationEscapes": 0,
+    "injectionEscapes": 0,
+    "ece": 0.002,
+    "reliability": [
+      {
+        "bucket": "0-20",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "20-40",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "40-60",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "60-80",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "80-100",
+        "avgConfidencePct": 100,
+        "accuracyPct": 100,
+        "count": 64
+      }
+    ]
+  }
+}
