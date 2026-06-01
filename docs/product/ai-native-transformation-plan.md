@@ -220,6 +220,12 @@ excluded: real customer data and a live production tenant.
 
 The measurement spine is built, A+, and re-runnable by anyone:
 
+- **`pnpm ai:review`** — the one command for a skeptical outsider. Runs everything
+  below + the two live proofs, **pins the models** (records their digests),
+  deletes stale reports, **re-validates every number itself** against the A+
+  thresholds, verifies the judge is a *different* model, stamps the git commit, and
+  prints a single PASS/FAIL with a `REVIEW.md` + `review-attestation.json`. Exit
+  code is 0 only on PASS. (≈ 6 min; needs `qwen3.6:latest` + `llama3.1-storm:8b`.)
 - **`pnpm ai:benchmark`** — extraction on a held-out synthetic corpus (clean / OCR-noise /
   multilingual / adversarial). Live (qwen3.6): **F1 99.2%**, ECE 0.005, **0 hallucination escapes**,
   **0 injection escapes**. Corpus carries disambiguation distractors + injection decoys so the number

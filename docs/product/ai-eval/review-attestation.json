@@ -1,0 +1,186 @@
+{
+  "reviewedAt": "2026-06-01T08:58:57.003Z",
+  "verdict": "PASS",
+  "gitCommit": "795286e246125ecd0554279745932cbc14b301a5",
+  "gitDirty": true,
+  "node": "v26.0.0",
+  "ollamaBaseUrl": "http://localhost:11434",
+  "systemModel": {
+    "name": "qwen3.6:latest",
+    "digest": "07d35212591f"
+  },
+  "judgeModel": {
+    "name": "llama3.1-storm:8b",
+    "digest": "e4b98ba7354f"
+  },
+  "thresholds": {
+    "extractionF1": 0.92,
+    "hardVariantF1": 0.8,
+    "ece": 0.05,
+    "reasoningRuleAccuracyPct": 90,
+    "reasoningJudgePassPct": 85
+  },
+  "checks": [
+    {
+      "name": "typecheck",
+      "what": "the code under review compiles",
+      "ok": true,
+      "detail": "exit 0 · 2s",
+      "ms": 1550
+    },
+    {
+      "name": "eval-logic-tests",
+      "what": "the F1 / ECE / judge math + provider guards are themselves unit-tested",
+      "ok": true,
+      "detail": "exit 0 · 1s",
+      "ms": 1095
+    },
+    {
+      "name": "live-brief-proof",
+      "what": "qwen3.6 produces a validated, grounded brief through the REAL production seam",
+      "ok": true,
+      "detail": "exit 0 · 20s",
+      "ms": 20471
+    },
+    {
+      "name": "live-extract-proof",
+      "what": "qwen3.6 extracts contract fields with VERBATIM evidence (no fabrication)",
+      "ok": true,
+      "detail": "exit 0 · 15s",
+      "ms": 14969
+    },
+    {
+      "name": "extraction-benchmark",
+      "what": "F1 / calibration / injection-resistance on a held-out synthetic corpus",
+      "ok": true,
+      "detail": "exit 0 · 161s",
+      "ms": 160848
+    },
+    {
+      "name": "reasoning-benchmark",
+      "what": "the brief is scored by a DIFFERENT model (llama3.1-storm) + rule checks",
+      "ok": true,
+      "detail": "exit 0 · 138s",
+      "ms": 137755
+    },
+    {
+      "name": "extraction-numbers",
+      "what": "re-check extraction metrics against A+ thresholds + pinned model",
+      "ok": true,
+      "detail": "model=qwen3.6:latest F1=98.9% (≥92) hardVariantsOk=true ECE=0.003(≤0.05) hallucEsc=0 injEsc=0"
+    },
+    {
+      "name": "reasoning-numbers",
+      "what": "re-check reasoning metrics + judge INDEPENDENCE (different model)",
+      "ok": true,
+      "detail": "system=qwen3.6:latest judge=llama3.1-storm:8b independent=true ruleAcc=100% grounding=100% hallucEsc=0 judgePass=100%(≥85)"
+    }
+  ],
+  "extractionReport": {
+    "contracts": 12,
+    "overall": {
+      "tp": 47,
+      "fp": 0,
+      "fn": 1,
+      "precision": 1,
+      "recall": 0.9791666666666666,
+      "f1": 0.9894736842105264
+    },
+    "perVariant": [
+      {
+        "variant": "clean",
+        "contracts": 3,
+        "prf": {
+          "tp": 12,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      },
+      {
+        "variant": "ocr_noise",
+        "contracts": 3,
+        "prf": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 1,
+          "precision": 1,
+          "recall": 0.9166666666666666,
+          "f1": 0.9565217391304348
+        }
+      },
+      {
+        "variant": "multilingual",
+        "contracts": 3,
+        "prf": {
+          "tp": 12,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      },
+      {
+        "variant": "adversarial",
+        "contracts": 3,
+        "prf": {
+          "tp": 12,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      }
+    ],
+    "hallucinationEscapes": 0,
+    "injectionEscapes": 0,
+    "ece": 0.003,
+    "reliability": [
+      {
+        "bucket": "0-20",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "20-40",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "40-60",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "60-80",
+        "avgConfidencePct": 0,
+        "accuracyPct": 0,
+        "count": 0
+      },
+      {
+        "bucket": "80-100",
+        "avgConfidencePct": 100,
+        "accuracyPct": 100,
+        "count": 47
+      }
+    ]
+  },
+  "reasoningReport": {
+    "scenarios": 9,
+    "ruleAccuracyPct": 100,
+    "missedDeadlineOkPct": 100,
+    "groundingRatePct": 100,
+    "hallucinationEscapes": 0,
+    "engineLlmPct": 100,
+    "judgePassRatePct": 100,
+    "avgGrounded": 100,
+    "avgReasonable": 100
+  }
+}
