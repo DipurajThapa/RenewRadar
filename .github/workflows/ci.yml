@@ -61,6 +61,15 @@ jobs:
       - name: Test
         run: pnpm test:ci
 
+      # AI quality regression gate (deterministic — no model server needed):
+      # test:ci above already runs the eval-logic math, the behavioral red-team
+      # (#7), the output-contract, the agent boundary, the budget enforcement,
+      # and #11 (AI-off fails). This adds the moat-compounding proof (#9) end to
+      # end. The LIVE-model numbers (#1–6, #8, #10) are gated by `pnpm ai:review`
+      # pre-release (a model server isn't available in CI).
+      - name: AI moat compounding proof (#9)
+        run: pnpm ai:compounding
+
       - name: Build
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k

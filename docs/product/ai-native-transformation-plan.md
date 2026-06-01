@@ -244,6 +244,25 @@ the standard split for model-dependent evals.
 
 Reports are versioned under `docs/product/ai-eval/`.
 
+### C hardened to A+ (revisit pass)
+
+The gap was honesty + aggregation: the 11 benchmarks were measured by *scattered*
+commands, no single all-11 report, and CI gated only the harness math.
+
+- **One command, all 11.** `pnpm ai:review` now runs and folds in the four that
+  were missing — **#11** AI-load-bearing (deterministic), **#9** compounding
+  (deterministic), **#8** load/latency, **#10** cost/economics — on top of the
+  extraction (#1/#2/#3/#6/#7) and reasoning (#3/#4/#5) benchmarks. It independently
+  re-validates #1–7 and #9 against fixed thresholds and writes `REVIEW.md` with an
+  explicit **all-11 coverage map** + a signed attestation (pinned model digests,
+  git SHA, stale-report deletion). #8's strict SLO is honestly marked "gated in
+  Phase B" (needs streaming + multi-replica).
+- **CI regression gate, explicit.** `pnpm test:ci` already gates every deterministic
+  check on each PR (eval math, behavioral red-team #7, output-contract, agent
+  boundary, budget enforcement, #11). CI now also runs **`pnpm ai:compounding`** so
+  the moat proof (#9) gates end-to-end. The live-model numbers (#1–6, #8, #10) gate
+  via `pnpm ai:review` pre-release — documented in `REVIEW.md`, not hidden.
+
 ## Phase 2 status — DONE ✅ (safety hardening)
 
 Category E pushed toward A+, enforced by tests (not convention):
