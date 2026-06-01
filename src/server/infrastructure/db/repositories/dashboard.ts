@@ -193,6 +193,10 @@ export async function getDashboardKpis(
       .where(
         and(
           eq(subscriptionsTable.accountId, accountId),
+          // Active-only, to match `trackedSubscriptions` above — otherwise the
+          // "+N this month" delta counts drafts/cancelled and can exceed the
+          // tracked total it annotates (e.g. "5 tracked · +11 this month").
+          eq(subscriptionsTable.status, "active"),
           gte(subscriptionsTable.createdAt, startOfMonth)
         )
       ),

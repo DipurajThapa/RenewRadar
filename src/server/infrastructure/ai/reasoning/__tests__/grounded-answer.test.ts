@@ -55,6 +55,26 @@ describe("DeterministicReasoningProvider.answerQuestion", () => {
     expect(hrefs).toEqual(["/action-queue", "/reports"]);
   });
 
+  it("labels each deep-link by its destination, not the fact source", async () => {
+    // Repro of the duplicate-looking "Open Needs you" links: two account_risk
+    // facts, one pointing at the queue and one at a subscription page. The
+    // labels must differ and reflect where each link actually goes.
+    const facts = [
+      fact({ source: "account_risk", detail: "3 high-risk", href: "/action-queue" }),
+      fact({
+        source: "account_risk",
+        detail: "Biggest risk: Acme — Pro.",
+        href: "/subscriptions/sub-123",
+        refId: "sub-123",
+      }),
+    ];
+    const ans = await provider.answerQuestion({ question: "biggest risk?", facts });
+    const labels = ans.deepLinks.map((d) => d.label);
+    expect(labels).toEqual(["Open Needs you", "Open renewal"]);
+    // no two links render the same visible label
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
   it("returns an honest 'no data' answer for empty facts", async () => {
     const ans = await provider.answerQuestion({
       question: "what's the meaning of life?",

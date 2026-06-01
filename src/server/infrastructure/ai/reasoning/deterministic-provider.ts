@@ -91,6 +91,18 @@ function trajectoryPass(input: RenewalBriefInput): {
   const { slope, intercept, r2 } = ols(xy);
   const xEnd = daysBetween(t0, input.termEndDate);
   const point = Math.max(0, Math.round(slope * xEnd + intercept));
+  // Guard: a projection that diverges by an order of magnitude from every
+  // observed charge is not trustworthy (contaminated or erratic history).
+  // Suppress the whole pass rather than assert a confident wrong figure — an
+  // honest "no projection" beats a fabricated one.
+  const ys = pts
+    .map((p: ChargePoint) => p.totalAnnualizedCents)
+    .filter((v: number) => v > 0);
+  const maxY = ys.length ? Math.max(...ys) : 0;
+  const minY = ys.length ? Math.min(...ys) : 0;
+  if (ys.length > 0 && (point > maxY * 3 || point < minY / 3)) {
+    return { claim: null, prediction: null, rising: false };
+  }
   const first = pts[0]!.totalAnnualizedCents;
   const last = pts[pts.length - 1]!.totalAnnualizedCents;
   const deltaPct = first > 0 ? Math.round(((last - first) / first) * 100) : 0;
@@ -475,7 +487,10 @@ export class DeterministicReasoningProvider implements ReasoningProvider {
     for (const f of input.facts) {
       if (f.href && !seen.has(f.href)) {
         seen.add(f.href);
-        deepLinks.push({ label: deepLinkLabel(f.source), href: f.href });
+        // Label by destination, not source — otherwise a fact whose href points
+        // at a subscription page would read "Open Needs you" (its source is
+        // account_risk), producing a mislabeled, duplicate-looking link.
+        deepLinks.push({ label: deepLinkLabel(f.href), href: f.href });
       }
     }
 
@@ -520,25 +535,21 @@ function confidenceForSource(source: string): number {
   }
 }
 
-/** Where a fact's deep-link should take the operator. */
-function deepLinkLabel(source: string): string {
-  switch (source) {
-    case "account_risk":
-    case "needs_you":
-      return "Open Needs you";
-    case "vendor_intelligence":
-    case "vendor_benchmark":
-    case "compliance":
-      return "Open vendor";
-    case "savings":
-      return "Open reports";
-    case "renewal_range":
-      return "Open renewals";
-    case "kpis":
-      return "Open dashboard";
-    default:
-      return "Open";
-  }
+/** Label a deep-link by where it actually points — derived from the href path,
+ *  not the fact's source, so e.g. a subscription link never reads "Open Needs
+ *  you" and two links to different screens never render identical labels. */
+function deepLinkLabel(href: string): string {
+  if (href.startsWith("/subscriptions/")) return "Open renewal";
+  if (href.startsWith("/vendors/")) return "Open vendor";
+  if (href.startsWith("/action-queue")) return "Open Needs you";
+  if (href.startsWith("/renewals")) return "Open renewals";
+  if (href.startsWith("/reports")) return "Open reports";
+  if (href.startsWith("/compliance")) return "Open compliance";
+  if (href.startsWith("/review")) return "Open review queue";
+  if (href.startsWith("/approvals")) return "Open approvals";
+  if (href.startsWith("/requests")) return "Open requests";
+  if (href.startsWith("/dashboard")) return "Open dashboard";
+  return "Open";
 }
 
 function recommendStatement(

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   NOTICE_THRESHOLDS,
   calculateNoticeDeadline,
+  daysUntilDate,
   daysUntilNoticeDeadline,
   triggerForThreshold,
 } from "@server/domain/notice-deadline/calculate";
@@ -79,6 +80,31 @@ describe("daysUntilNoticeDeadline", () => {
     const today = new Date(Date.UTC(2026, 2, 8, 12, 0, 0)); // mid-day, DST day
     const days = daysUntilNoticeDeadline("2026-04-08", 30, today);
     expect(days).toBe(1); // Mar 9 - Mar 8 = 1
+  });
+});
+
+describe("daysUntilDate", () => {
+  it("returns 0 when today === the target date", () => {
+    const today = new Date(Date.UTC(2026, 5, 3));
+    expect(daysUntilDate("2026-06-03", today)).toBe(0);
+  });
+
+  it("returns positive days to a future date (the event-deadline path)", () => {
+    const today = new Date(Date.UTC(2026, 4, 30)); // May 30
+    // This is the exact bug scenario: the renewal event's notice deadline is
+    // 2026-06-03 → 4 days away, even when a subscription's stale termEndDate
+    // would have implied a negative count.
+    expect(daysUntilDate("2026-06-03", today)).toBe(4);
+  });
+
+  it("returns negative when the target date has passed", () => {
+    const today = new Date(Date.UTC(2026, 4, 30));
+    expect(daysUntilDate("2025-11-30", today)).toBe(-181);
+  });
+
+  it("accepts a Date input and is rounding/TZ-safe at mid-day", () => {
+    const today = new Date(Date.UTC(2026, 2, 8, 12, 0, 0));
+    expect(daysUntilDate(new Date(Date.UTC(2026, 2, 9)), today)).toBe(1);
   });
 });
 
