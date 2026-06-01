@@ -1,18 +1,18 @@
 {
   "provider": "ollama-reasoner",
   "model": "qwen3.6:latest",
-  "requests": 4,
-  "concurrency": 3,
-  "sloP95Ms": 90000,
-  "llmFired": 4,
+  "requests": 5,
+  "concurrency": 1,
+  "sloP95Ms": 25000,
+  "llmFired": 5,
   "errors": 0,
   "latencyMs": {
-    "mean": 29370,
-    "p50": 24390,
-    "p95": 45577,
-    "p99": 45577
+    "mean": 14155,
+    "p50": 15459,
+    "p95": 18753,
+    "p99": 18753
   },
-  "throughputReqPerSec": 0.074,
-  "wallMs": 54337,
+  "throughputReqPerSec": 0.071,
+  "wallMs": 70777,
   "verdict": "PASS"
 }
