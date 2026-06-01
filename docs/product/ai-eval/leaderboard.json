@@ -1,6 +1,15 @@
 {
   "seed": 20260601,
-  "count": 8,
+  "count": 2,
+  "pricing": {
+    "inputPer1kUsdMicros": 150,
+    "outputPer1kUsdMicros": 200
+  },
+  "recommendation": {
+    "brief": "qwen3.6:latest",
+    "ask": "qwen3.6:latest",
+    "value": "qwen3.6:latest"
+  },
   "rows": [
     {
       "model": "qwen3.6:latest",
@@ -8,31 +17,21 @@
       "ece": 0,
       "hallucinationEscapes": 0,
       "injectionEscapes": 0,
-      "avgLatencyMs": 13488
-    },
-    {
-      "model": "qwen3.5:4b",
-      "f1": 0.9508196721311475,
-      "ece": 0,
-      "hallucinationEscapes": 0,
-      "injectionEscapes": 0,
-      "avgLatencyMs": 12873
-    },
-    {
-      "model": "qwen3.5:9b",
-      "f1": 0.9508196721311475,
-      "ece": 0.002,
-      "hallucinationEscapes": 0,
-      "injectionEscapes": 0,
-      "avgLatencyMs": 17546
+      "avgLatencyMs": 12908,
+      "avgTokensPerDoc": 1296,
+      "costPerDocUsdMicros": 219,
+      "costPer1kDocsUsdMicros": 219000
     },
     {
       "model": "llama3.1-storm:8b",
-      "f1": 0.5490196078431372,
-      "ece": 0.263,
+      "f1": 0.7142857142857143,
+      "ece": 0.167,
       "hallucinationEscapes": 0,
       "injectionEscapes": 0,
-      "avgLatencyMs": 10777
+      "avgLatencyMs": 10668,
+      "avgTokensPerDoc": 1104,
+      "costPerDocUsdMicros": 183,
+      "costPer1kDocsUsdMicros": 183000
     }
   ]
 }

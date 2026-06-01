@@ -324,4 +324,36 @@ Category D — the moat made testable without real data:
 
 Remaining D follow-ons: cross-account benchmark uplift (the aggregator exists; a
 recommendation-quality metric would quantify it) + few-shot exemplar mining from
-corrections. Next: Phase 6 (economics — F).
+corrections.
+
+## Phase 6 status — DONE ✅ (the economics)
+
+Category F — unit economics made a measured number, not a guess. Local inference
+is free, so this prices the **hosted-equivalent**: what serving each tier WOULD
+cost, so the business case is known before any capacity is purchased.
+
+- **F1 — token accounting + cost model.** `local-llm/usage.ts` extracts real
+  prompt + completion tokens from BOTH dialects (Ollama `prompt_eval_count` +
+  `eval_count` / OpenAI `usage.*`), a pure micro-USD cost model
+  (`estimateCostUsdMicros`), and a process `UsageMeter`. `LocalLlmClient.chatJson`
+  meters every successful call — non-invasive, providers unchanged. 13 unit tests
+  (extraction both dialects, cost math, meter accumulation, client→meter wiring).
+- **F2 — model-tier cost.** `pnpm ai:leaderboard` now reports tokens/doc + **$/1k
+  docs** per model and recommends by **accuracy × latency × cost**. Live (2 models
+  × 2 contracts): `qwen3.6` F1 100% @ $0.22/1k docs vs `llama3.1-storm` F1 71% @
+  $0.18/1k — cheaper but fails the quality bar, so qwen3.6 wins on value too.
+- **F3 — per-account budget guard.** `checkBudget(used, cap)` (pure, tested) mirrors
+  the existing AI-pages cap: over the monthly spend cap → denied, and the caller
+  serves the deterministic engine for free (degrade, never overbill). A cap of 0 =
+  unlimited.
+- **F4 — caching as a cost lever.** `pnpm ai:cost` runs real reasoning ops, meters
+  them, prices them, and projects monthly cost. Live (qwen3.6): **1242 tokens/op,
+  $0.21/1k ops**; a warm second pass over identical inputs fired **0** new model
+  calls (cache hit) → that work cost **$0**. Monthly @ 50k ops: **$0 local /
+  $10.50 hosted / $5.25 hosted+cache**. ECONOMICS: PASS ✅.
+
+The deliberately-excluded gap (per the brief): a live production tenant's real
+token volume. Everything else is measured now — `pnpm ai:cost` + `pnpm ai:leaderboard`
+turn the economics into numbers an outsider can re-run.
+
+**All six categories (A–F) are now built and falsifiable.**
