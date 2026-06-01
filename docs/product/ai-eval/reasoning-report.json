@@ -1,0 +1,15 @@
+{
+  "systemModel": "qwen3.6:latest",
+  "judgeModel": "llama3.1-storm:8b",
+  "report": {
+    "scenarios": 9,
+    "ruleAccuracyPct": 100,
+    "missedDeadlineOkPct": 100,
+    "groundingRatePct": 100,
+    "hallucinationEscapes": 0,
+    "engineLlmPct": 100,
+    "judgePassRatePct": 89,
+    "avgGrounded": 100,
+    "avgReasonable": 89
+  }
+}

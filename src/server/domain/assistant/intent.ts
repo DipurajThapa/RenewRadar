@@ -6,6 +6,7 @@
  */
 
 export type AskIntent =
+  | "cross_document"
   | "vendor_benchmark"
   | "vendor_spend"
   | "expiring_compliance"
@@ -17,6 +18,19 @@ export type AskIntent =
   | "unknown";
 
 const MATCHERS: Array<{ intent: AskIntent; any: string[] }> = [
+  // Multi-document synthesis — compare/rank across the account's OWN contracts.
+  // First so self-scoped comparatives ("compare my contracts") beat the
+  // cross-ACCOUNT benchmark ("compare to peers").
+  {
+    intent: "cross_document",
+    any: [
+      "which of", "which vendor", "which subscription", "which contract",
+      "which one", "across all", "across my", "all my", "all of my",
+      "list all", "list my", "each of", "every subscription", "every contract",
+      "compare my", "strictest", "loosest", "longest notice", "shortest notice",
+      "most expensive", "cheapest", "rank my", "rank them", "highest cost", "lowest cost",
+    ],
+  },
   // Cross-account "what's typical" — must beat vendor_spend ("compare to others").
   { intent: "vendor_benchmark", any: ["benchmark", "typical", "compare", "peers", "industry", "average for", "vs other", "versus other"] },
   // Compliance / certs / insurance — beats the generic "expiring" of renewals.

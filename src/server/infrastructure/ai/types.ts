@@ -85,6 +85,18 @@ export type InsightMeta = {
   promptVersion: string;
   /** Integer 0..100. Self-reported. */
   confidencePct: number;
+  /**
+   * Token usage + hosted-equivalent cost for THIS operation (F1/F3). Present
+   * only when an LLM call actually completed (engine "llm", or a deterministic
+   * fallback that still consumed tokens before discarding the output).
+   * Undefined for the pure deterministic path (free). Drives per-account budget
+   * accounting; the application layer records it to the reasoning-usage ledger.
+   */
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    costUsdMicros: number;
+  };
 };
 
 /**

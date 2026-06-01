@@ -39,7 +39,10 @@ function build():
   | HeuristicStubProvider
   | AnthropicNotConfiguredProvider
   | LocalLlmExtractionProvider {
-  const provider = process.env.AI_EXTRACTION_PROVIDER ?? "heuristic-stub";
+  // AI-first by default: the shipped experience uses the local LLM. It
+  // self-falls-back to the heuristic extractor per-call when no model server is
+  // reachable, so a model-less environment still works (just deterministically).
+  const provider = process.env.AI_EXTRACTION_PROVIDER ?? "ollama";
   switch (provider) {
     case "ollama":
     case "local":
@@ -120,7 +123,9 @@ export function _resetExtractionProviderForTests(
  */
 export function getReasoningProvider(): ReasoningProvider {
   if (cachedReasoning) return cachedReasoning;
-  const flag = process.env.AI_REASONING_PROVIDER ?? "deterministic";
+  // AI-first by default. Always safe: the local-LLM provider self-falls-back to
+  // the deterministic engine per-call when the model is unreachable.
+  const flag = process.env.AI_REASONING_PROVIDER ?? "ollama";
   if (flag === "anthropic") {
     const hasKey =
       typeof process.env.ANTHROPIC_API_KEY === "string" &&
@@ -144,6 +149,27 @@ export function _resetReasoningProviderForTests(
   provider?: ReasoningProvider | null
 ): void {
   cachedReasoning = provider ?? null;
+}
+
+let cachedFallbackReasoning: ReasoningProvider | null = null;
+
+/**
+ * The deterministic reasoner, explicitly. Used as the "degraded mode" served when
+ * an account is over its monthly AI-reasoning budget (F3) — free, grounded, and
+ * never an LLM call. Separate from `getReasoningProvider()` so the budget guard
+ * can force it regardless of the configured default.
+ */
+export function getFallbackReasoningProvider(): ReasoningProvider {
+  if (!cachedFallbackReasoning) {
+    cachedFallbackReasoning = new DeterministicReasoningProvider();
+  }
+  return cachedFallbackReasoning;
+}
+
+export function _resetFallbackReasoningProviderForTests(
+  provider?: ReasoningProvider | null
+): void {
+  cachedFallbackReasoning = provider ?? null;
 }
 
 export type { ReasoningProvider, RenewalIntelligenceBrief, RenewalBriefInput } from "./reasoning/types";

@@ -15,7 +15,10 @@ import {
   subscriptionsTable,
   type RenewalBrief,
 } from "@server/infrastructure/db/schema";
-import { getReasoningProvider } from "@server/infrastructure/ai";
+import {
+  recordReasoningSpend,
+  resolveReasoningProvider,
+} from "@server/application/ai-budget";
 import { buildRenewalBriefInput } from "./aggregate";
 import {
   AUDIT_ACTIONS,
@@ -52,8 +55,11 @@ export async function generateAndStoreBrief(input: {
     throw new RenewalBriefError("Subscription not found in this account.");
   }
 
-  // 2. Reason (pure provider — deterministic default, LLM behind key gate).
-  const brief = await getReasoningProvider().buildBrief(briefInput);
+  // 2. Reason. Pick the provider under the account's monthly reasoning budget:
+  //    within budget → the configured engine (LLM); over budget → deterministic
+  //    (free, grounded — degrade, never overbill). F3 enforcement.
+  const budget = await resolveReasoningProvider(input.accountId, input.today);
+  const brief = await budget.provider.buildBrief(briefInput);
 
   // Resolve the vendor + open renewal event for FK + timeline anchoring.
   // accountId is in every WHERE (defense-in-depth): the aggregator above
@@ -128,6 +134,14 @@ export async function generateAndStoreBrief(input: {
         },
       });
     }
+
+    // F3 — charge the actual token cost to the account's monthly ledger. No-op
+    // for the deterministic path (no usage), so the over-budget/offline paths
+    // write nothing. Inside the tx → atomic with the brief row.
+    await recordReasoningSpend(
+      { accountId: input.accountId, surface: "brief", meta: brief.meta },
+      tx
+    );
 
     log.info("renewal brief generated", {
       subscriptionId: input.subscriptionId,

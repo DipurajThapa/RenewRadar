@@ -138,4 +138,42 @@ describe("validateAnswer", () => {
     );
     expect(out.meta.engine).toBe("llm");
   });
+
+  // E1 — detail-grounding hole: a quote-less evidence item whose `detail` is not
+  // in any source must be dropped (previously it survived).
+  it("drops a claim whose evidence detail is fabricated (no quote to catch it)", () => {
+    const out = validateAnswer(
+      base([
+        {
+          statement: "fabricated narrative",
+          engine: "llm",
+          confidencePct: 90,
+          evidence: [fact({ detail: "this detail was never in the facts", quote: null })],
+        },
+      ]),
+      { sourceTexts: ["the only real fact about Acme"] }
+    );
+    expect(out.answers).toHaveLength(0);
+  });
+
+  it("keeps a claim whose evidence detail IS grounded in a source", () => {
+    const grounded = "Biggest risk: Acme — Pro ($900/yr).";
+    const out = validateAnswer(
+      base([
+        { statement: "grounded", engine: "llm", confidencePct: 90, evidence: [fact({ detail: grounded, quote: null })] },
+      ]),
+      { sourceTexts: [grounded] }
+    );
+    expect(out.answers).toHaveLength(1);
+  });
+
+  it("drops an evidence item with an empty detail (no grounding)", () => {
+    const out = validateAnswer(
+      base([
+        { statement: "empty-detail", engine: "llm", confidencePct: 90, evidence: [fact({ detail: "", quote: null })] },
+      ]),
+      { sourceTexts: ["some real source"] }
+    );
+    expect(out.answers).toHaveLength(0);
+  });
 });

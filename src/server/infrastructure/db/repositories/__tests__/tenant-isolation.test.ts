@@ -102,6 +102,10 @@ import {
   listExtractedFieldsForDocument,
   listPendingReviewFields,
 } from "@server/infrastructure/db/repositories/ai-extractions";
+import {
+  getMonthlyReasoningCostUsdMicros,
+  recordReasoningUsage,
+} from "@server/infrastructure/db/repositories/ai-reasoning-usage";
 
 import {
   softDeleteSubscription,
@@ -909,6 +913,23 @@ describe("queries/dashboard", () => {
     expect(bDefault?.count).toBe(1);
   });
 
+});
+
+describe("queries/ai-reasoning-usage", () => {
+  it("getMonthlyReasoningCostUsdMicros only sums the scoped account's spend", async () => {
+    await recordReasoningUsage({
+      accountId: ids.accountA.id,
+      surface: "brief",
+      provider: "ollama",
+      model: "qwen",
+      promptTokens: 600,
+      completionTokens: 40,
+      costUsdMicros: 500,
+    });
+    expect(await getMonthlyReasoningCostUsdMicros(ids.accountA.id)).toBe(500);
+    // Account B must not see account A's reasoning spend.
+    expect(await getMonthlyReasoningCostUsdMicros(ids.accountB.id)).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
