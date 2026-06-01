@@ -22,6 +22,7 @@
     "ai:benchmark:reasoning": "dotenv -e .env.local -- tsx scripts/ai-eval/reasoning-benchmark.ts",
     "ai:leaderboard": "dotenv -e .env.local -- tsx scripts/ai-eval/leaderboard.ts",
     "ai:review": "dotenv -e .env.local -- tsx scripts/ai-eval/review.ts",
+    "ai:load": "dotenv -e .env.local -- tsx scripts/ai-bench/load.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ci": "vitest run --reporter=verbose",

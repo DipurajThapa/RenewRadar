@@ -1,0 +1,18 @@
+{
+  "provider": "ollama-reasoner",
+  "model": "qwen3.6:latest",
+  "requests": 6,
+  "concurrency": 3,
+  "sloP95Ms": 90000,
+  "llmFired": 6,
+  "errors": 0,
+  "latencyMs": {
+    "mean": 34283,
+    "p50": 37161,
+    "p95": 41088,
+    "p99": 41088
+  },
+  "throughputReqPerSec": 0.074,
+  "wallMs": 81323,
+  "verdict": "PASS"
+}

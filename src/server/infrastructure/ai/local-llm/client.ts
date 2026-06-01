@@ -38,6 +38,15 @@ export type LocalLlmConfig = {
    *   null  → don't send the param at all (use the model default)
    */
   think: boolean | null;
+  /**
+   * API dialect. "ollama" = Ollama's native /api/chat (dev default). "openai" =
+   * the OpenAI-compatible /v1/chat/completions endpoint — what a PRODUCTION
+   * served model (vLLM, TGI, Ollama's own /v1, or a hosted gateway) speaks. The
+   * provider code is identical; only this flag + the base URL change.
+   */
+  apiStyle: "ollama" | "openai";
+  /** Bearer token for a served/hosted endpoint. Null for local. */
+  apiKey: string | null;
 };
 
 function toInt(v: string | undefined, dflt: number): number {
@@ -71,6 +80,8 @@ export function resolveLocalLlmConfig(
     temperature: toFloat(env.LOCAL_LLM_TEMPERATURE, 0),
     numCtx: toInt(env.LOCAL_LLM_NUM_CTX, 8192),
     think: thinkRaw == null || thinkRaw.trim() === "" ? false : thinkRaw === "true",
+    apiStyle: env.LLM_API_STYLE === "openai" ? "openai" : "ollama",
+    apiKey: env.LLM_API_KEY && env.LLM_API_KEY.length > 0 ? env.LLM_API_KEY : null,
   };
 }
 
@@ -92,6 +103,27 @@ type OllamaChatEnvelope = {
   message?: { role?: string; content?: string; thinking?: string };
   done?: boolean;
 };
+
+type OpenAiChatEnvelope = {
+  choices?: Array<{ message?: { content?: string } }>;
+};
+
+/** Parse a JSON object out of model `content`, with a balanced-brace salvage. */
+function parseJsonContent<T>(content: string): T {
+  try {
+    return JSON.parse(content) as T;
+  } catch (err) {
+    const salvaged = extractJsonObject(content);
+    if (salvaged) {
+      try {
+        return JSON.parse(salvaged) as T;
+      } catch {
+        /* fall through */
+      }
+    }
+    throw new LocalLlmError("local LLM content was not valid JSON", err);
+  }
+}
 
 /**
  * Pull the first balanced JSON object out of a string. Backstop for models that
@@ -137,9 +169,11 @@ export class LocalLlmClient {
   }
 
   /**
-   * POST /api/chat with `format: "json"` and return the parsed JSON object from
-   * `message.content`. Throws `LocalLlmError` on transport failure, timeout,
-   * non-2xx, empty content, or unparseable JSON.
+   * Send a chat request in JSON mode and return the parsed JSON object. Uses
+   * Ollama's /api/chat (apiStyle "ollama") or the OpenAI-compatible
+   * /v1/chat/completions (apiStyle "openai") — the production served path.
+   * Throws `LocalLlmError` on transport failure, timeout, non-2xx, empty
+   * content, or unparseable JSON.
    */
   async chatJson<T = unknown>(args: ChatJsonArgs): Promise<T> {
     const controller = new AbortController();
@@ -151,24 +185,43 @@ export class LocalLlmClient {
     }
 
     try {
-      const body: Record<string, unknown> = {
-        model: this.config.model,
-        stream: false,
-        format: "json",
-        options: {
-          temperature: this.config.temperature,
-          num_ctx: this.config.numCtx,
-        },
-        messages: [
-          { role: "system", content: args.system },
-          { role: "user", content: args.user },
-        ],
-      };
-      if (this.config.think !== null) body.think = this.config.think;
+      const openai = this.config.apiStyle === "openai";
+      const messages = [
+        { role: "system", content: args.system },
+        { role: "user", content: args.user },
+      ];
+      const body: Record<string, unknown> = openai
+        ? {
+            model: this.config.model,
+            stream: false,
+            temperature: this.config.temperature,
+            response_format: { type: "json_object" },
+            messages,
+          }
+        : {
+            model: this.config.model,
+            stream: false,
+            format: "json",
+            options: {
+              temperature: this.config.temperature,
+              num_ctx: this.config.numCtx,
+            },
+            messages,
+          };
+      if (!openai && this.config.think !== null) body.think = this.config.think;
 
-      const res = await fetch(`${this.config.baseUrl}/api/chat`, {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      };
+      if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
+
+      const url = openai
+        ? `${this.config.baseUrl}/v1/chat/completions`
+        : `${this.config.baseUrl}/api/chat`;
+
+      const res = await fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -180,31 +233,23 @@ export class LocalLlmClient {
         );
       }
 
-      let envelope: OllamaChatEnvelope;
+      let content: string | undefined;
       try {
-        envelope = (await res.json()) as OllamaChatEnvelope;
+        if (openai) {
+          const env = (await res.json()) as OpenAiChatEnvelope;
+          content = env.choices?.[0]?.message?.content?.trim();
+        } else {
+          const env = (await res.json()) as OllamaChatEnvelope;
+          content = env.message?.content?.trim();
+        }
       } catch (err) {
         throw new LocalLlmError("local LLM returned a non-JSON envelope", err);
       }
 
-      const content = envelope.message?.content?.trim();
       if (!content) {
         throw new LocalLlmError("local LLM returned empty content");
       }
-
-      try {
-        return JSON.parse(content) as T;
-      } catch (err) {
-        const salvaged = extractJsonObject(content);
-        if (salvaged) {
-          try {
-            return JSON.parse(salvaged) as T;
-          } catch {
-            /* fall through to the throw below */
-          }
-        }
-        throw new LocalLlmError("local LLM content was not valid JSON", err);
-      }
+      return parseJsonContent<T>(content);
     } catch (err) {
       if (err instanceof LocalLlmError) throw err;
       if ((err as { name?: string })?.name === "AbortError") {
@@ -232,7 +277,11 @@ export class LocalLlmClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`${this.config.baseUrl}/api/tags`, {
+      const path = this.config.apiStyle === "openai" ? "/v1/models" : "/api/tags";
+      const headers: Record<string, string> = {};
+      if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
+      const res = await fetch(`${this.config.baseUrl}${path}`, {
+        headers,
         signal: controller.signal,
       });
       return res.ok;
