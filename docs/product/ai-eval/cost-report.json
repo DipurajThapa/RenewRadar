@@ -1,0 +1,44 @@
+{
+  "provider": "ollama-reasoner",
+  "model": "qwen3.6:latest",
+  "pricing": {
+    "inputPer1kUsdMicros": 150,
+    "outputPer1kUsdMicros": 200
+  },
+  "cold": {
+    "ops": 3,
+    "llmFired": 3,
+    "meteredCalls": 3,
+    "promptTokens": 2303,
+    "completionTokens": 1422,
+    "avgTokensPerOp": 1242,
+    "avgCostPerOpUsdMicros": 210,
+    "totalCostUsdMicros": 630
+  },
+  "warm": {
+    "newCalls": 0,
+    "cacheHits": 3,
+    "savedUsdMicros": 630,
+    "cacheWorks": true
+  },
+  "cache": {
+    "size": 3,
+    "hits": 3,
+    "misses": 3,
+    "hitRatePct": 50,
+    "beforeRun": {
+      "size": 0,
+      "hits": 0,
+      "misses": 0,
+      "hitRatePct": 0
+    }
+  },
+  "monthly": {
+    "ops": 10000,
+    "localUsdMicros": 0,
+    "hostedUsdMicros": 2100000,
+    "hostedWithCacheUsdMicros": 1050000,
+    "hitRatePct": 50
+  },
+  "verdict": "PASS"
+}

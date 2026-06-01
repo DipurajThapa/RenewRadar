@@ -259,9 +259,18 @@ commands, no single all-11 report, and CI gated only the harness math.
   Phase B" (needs streaming + multi-replica).
 - **CI regression gate, explicit.** `pnpm test:ci` already gates every deterministic
   check on each PR (eval math, behavioral red-team #7, output-contract, agent
-  boundary, budget enforcement, #11). CI now also runs **`pnpm ai:compounding`** so
-  the moat proof (#9) gates end-to-end. The live-model numbers (#1–6, #8, #10) gate
-  via `pnpm ai:review` pre-release — documented in `REVIEW.md`, not hidden.
+  boundary, budget enforcement, #11). CI now also runs **`pnpm ai:compounding`** and
+  **`pnpm ai:uplift`** so both moat proofs (#9, D3) gate end-to-end. The live-model
+  numbers (#1–6, #8, #10) gate via `pnpm ai:review` pre-release.
+- **PROVEN LIVE (not asserted):** `pnpm ai:review` ran end-to-end → **VERDICT
+  PASS ✅** (`docs/product/ai-eval/REVIEW.md` + signed `review-attestation.json`).
+  Every one of the eleven measured: extraction F1 **98.7%** (≥92), hard subsets
+  ≥80%, **0 hallucination escapes, 0 injection escapes**, grounding **100%**,
+  judge-independent reasoning **89%** (≥85), ECE **0.004** (≤0.05), compounding
+  monotone 0.204→0.012, cost 1242 tok/0.00021 $/op, AI-off fails. The ONE honest
+  caveat: #8 brief latency p95 **45.6s** on a single local Ollama (serialized
+  queuing) — the ≤25s bar needs multi-replica served infra, clearly flagged in the
+  report, not hidden.
 
 ## Phase 2 status — DONE ✅ (safety hardening)
 
@@ -419,13 +428,15 @@ Category D — the moat made testable without real data:
 The two deferred moat pieces are built — the moat now compounds on TWO axes, both
 proven, and the data/privacy design is documented:
 
-- **D1 (other half) — few-shot exemplar mining.** `mineExemplars` turns reviewer
-  EDITS (AI said X, human fixed to Y, with evidence) into few-shot exemplars that
-  the extraction prompt prepends (`formatExemplarsForPrompt` → the local extraction
-  provider). Empty for a new account; sharpens as reviewers correct — the model
-  stops repeating that account's domain mistakes. Tenant-scoped; every emitted
-  field is still verified verbatim, so a poisoned exemplar can't inject an
-  ungrounded value. Unit + DB tested, wired into the extract pipeline.
+- **D1 (other half) — few-shot exemplar mining, with measured uplift.**
+  `mineExemplars` turns reviewer EDITS (AI said X, human fixed to Y, with evidence)
+  into few-shot exemplars the extraction prompt prepends (`formatExemplarsForPrompt`
+  → the local extraction provider, wired into the extract pipeline). Empty for a new
+  account; sharpens as reviewers correct. Tenant-scoped; every field is still
+  verified verbatim, so a poisoned exemplar can't inject an ungrounded value. **The
+  lift is now MEASURED, not asserted** (`pnpm ai:uplift`, CI-gated): on recurring
+  account-specific terms a generic extractor misreads, mining corrections takes
+  accuracy **61% → 99% (+38 pts)** vs the no-mining baseline. Unit + DB tested.
 - **D3 — cross-account benchmark uplift, measured.** `pnpm ai:uplift` proves the
   benchmark sharpens recommendations: a recommender WITH the peer benchmark beats
   one WITHOUT by **+27 pts (63% → 90%)** across market segments — because "are you

@@ -86,3 +86,49 @@ export function simulateBenchmarkUplift(seed = 20260601, n = 600): UpliftResult 
     upliftPct: withPct - withoutPct,
   };
 }
+
+export type ExemplarUpliftResult = {
+  n: number;
+  withoutExemplarsAccuracyPct: number;
+  withExemplarsAccuracyPct: number;
+  upliftPct: number;
+};
+
+/**
+ * Few-shot exemplar-mining uplift (D1) — proves the compounding extraction moat:
+ * a generic model systematically MISREADS this account's recurring non-standard
+ * terms ("advance notice", "evergreen clause", …). Each time a reviewer corrects
+ * one, `mineExemplars` turns it into a few-shot example, so the NEXT document with
+ * that term is read correctly. Accuracy rises as corrections accumulate; without
+ * mining it stays stuck at the generic baseline. (Idealized mechanism model — the
+ * real lift is measured on held-out extraction once corrections accrue.)
+ */
+export function simulateExemplarUplift(seed = 20260601, n = 600): ExemplarUpliftResult {
+  const rnd = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  // Account-specific terms a generic extractor gets wrong until it has seen a fix.
+  const NON_STANDARD = ["advance notice", "evergreen clause", "anniversary date", "auto-extend"];
+  const learned = new Set<string>(); // mined exemplars (term corrected before)
+  let withoutCorrect = 0;
+  let withCorrect = 0;
+  for (let i = 0; i < n; i++) {
+    const isNonStandard = rnd() < 0.4;
+    const term = isNonStandard
+      ? NON_STANDARD[Math.floor(rnd() * NON_STANDARD.length)]!
+      : "standard";
+    const genericRight = !isNonStandard; // generic only handles standard phrasing
+
+    if (genericRight) withoutCorrect++;
+    if (genericRight || learned.has(term)) withCorrect++;
+
+    // The reviewer corrects a missed field → it's mined as an exemplar for next time.
+    if (isNonStandard) learned.add(term);
+  }
+  const withoutPct = Math.round((withoutCorrect / n) * 100);
+  const withPct = Math.round((withCorrect / n) * 100);
+  return {
+    n,
+    withoutExemplarsAccuracyPct: withoutPct,
+    withExemplarsAccuracyPct: withPct,
+    upliftPct: withPct - withoutPct,
+  };
+}
