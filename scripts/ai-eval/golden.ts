@@ -157,6 +157,68 @@ export const goldenBriefs: GoldenBrief[] = [
       ],
     }),
   },
+  {
+    name: "tiny-value-clean-renew",
+    note: "Cheap tool, lots of runway, flat cost, below peer median — a clean renewal.",
+    acceptableActions: ["renewed", "renewed_with_adjustments"],
+    input: baseBrief({
+      vendorName: "Calendly",
+      annualValueCents: 4_800,
+      daysUntilNoticeDeadline: 120,
+      chargeHistory: [
+        { effectiveDate: "2024-01-01", totalAnnualizedCents: 4_800, source: "term_start", refId: null },
+        { effectiveDate: "2025-01-01", totalAnnualizedCents: 4_800, source: "spend_feed", refId: "t-cal" },
+      ],
+      benchmark: {
+        sampleAccounts: 6,
+        typicalNoticePeriodDays: 30,
+        autoRenewRatePct: 55,
+        medianAnnualValueCents: 6_000,
+        topLevers: [{ lever: "annual_prepay", count: 2 }],
+        medianSavingsAnnualCents: 600,
+      },
+    }),
+  },
+  {
+    name: "steep-jump-leverage",
+    note: "Cost doubled, well above median, prior cancellation on file — strong leverage.",
+    acceptableActions: ["downgraded", "cancelled", "renewed_with_adjustments"],
+    input: baseBrief({
+      vendorName: "Snowflake",
+      annualValueCents: 300_000,
+      daysUntilNoticeDeadline: 20,
+      chargeHistory: [
+        { effectiveDate: "2024-01-01", totalAnnualizedCents: 150_000, source: "term_start", refId: null },
+        { effectiveDate: "2025-01-01", totalAnnualizedCents: 220_000, source: "price_changed", refId: "e-sf" },
+        { effectiveDate: "2026-01-01", totalAnnualizedCents: 300_000, source: "spend_feed", refId: "t-sf" },
+      ],
+      benchmark: {
+        sampleAccounts: 7,
+        typicalNoticePeriodDays: 30,
+        autoRenewRatePct: 75,
+        medianAnnualValueCents: 180_000,
+        topLevers: [{ lever: "competing_quote", count: 5 }],
+        medianSavingsAnnualCents: 40_000,
+      },
+      priorDecisions: [
+        { decision: "downgraded", negotiationLever: "volume_increase", savedAnnualUsdCents: 30_000, decidedAt: "2024-09-01" },
+      ],
+    }),
+  },
+  {
+    name: "auto-renew-off-midrange",
+    note: "Auto-renew off, mid value, no clause, a month of runway — keep or right-size.",
+    acceptableActions: ["renewed", "renewed_with_adjustments", "deferred"],
+    input: baseBrief({
+      vendorName: "Zoom",
+      annualValueCents: 60_000,
+      autoRenew: false,
+      daysUntilNoticeDeadline: 35,
+      chargeHistory: [
+        { effectiveDate: "2025-01-01", totalAnnualizedCents: 60_000, source: "term_start", refId: null },
+      ],
+    }),
+  },
 ];
 
 export type GoldenAsk = {

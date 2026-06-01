@@ -19,6 +19,7 @@
     "db:seed": "dotenv -e .env.local -- tsx scripts/seed.ts",
     "db:test:migrate": "dotenv -e .env.test -- drizzle-kit migrate",
     "ai:benchmark": "dotenv -e .env.local -- tsx scripts/ai-eval/benchmark.ts",
+    "ai:benchmark:reasoning": "dotenv -e .env.local -- tsx scripts/ai-eval/reasoning-benchmark.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ci": "vitest run --reporter=verbose",

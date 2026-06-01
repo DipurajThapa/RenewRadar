@@ -249,12 +249,38 @@ export class OllamaReasoningProvider implements ReasoningProvider {
           })),
         }));
 
+      // When a missed deadline forces "deferred", the model's own recommendation
+      // claim may still argue for renewal — an incoherent brief. Drop any
+      // contradicting recommendation claim and inject a coherent, grounded
+      // deferral claim so the action and the reasoning agree.
+      let finalClaims = claims;
+      if (input.noticeDeadlineMissed) {
+        finalClaims = claims.filter((c) => c.key !== "recommended_action");
+        finalClaims.push({
+          key: "recommended_action",
+          statement:
+            "The notice deadline has already passed — the safe call is to defer and regroup off-cycle rather than treat this as a normal renewal.",
+          engine: "deterministic",
+          confidencePct: 90,
+          evidence: [
+            {
+              source: "notice_deadline",
+              detail: `Notice deadline already missed (${Math.abs(
+                input.daysUntilNoticeDeadline
+              )} days past).`,
+              quote: null,
+              refId: null,
+            },
+          ],
+        });
+      }
+
       const candidate: RenewalIntelligenceBrief = {
         meta: {
           provider: this.providerName,
           model: this.model,
           promptVersion: this.promptVersion,
-          confidencePct: metaConfidence(claims),
+          confidencePct: metaConfidence(finalClaims),
           engine: "llm",
           briefVersion: "brief-v1",
         },
@@ -265,7 +291,7 @@ export class OllamaReasoningProvider implements ReasoningProvider {
         recommendedAction: input.noticeDeadlineMissed
           ? "deferred"
           : coerceAction(raw.recommendedAction) ?? fallback.recommendedAction,
-        claims,
+        claims: finalClaims,
         // Numbers stay deterministic — the model never invents a dollar figure.
         predictedNextAnnualCents: fallback.predictedNextAnnualCents,
       };
