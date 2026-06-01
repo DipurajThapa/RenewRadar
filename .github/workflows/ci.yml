@@ -70,6 +70,9 @@ jobs:
       - name: AI moat compounding proof (#9)
         run: pnpm ai:compounding
 
+      - name: AI moat cross-account uplift proof (D3)
+        run: pnpm ai:uplift
+
       - name: Build
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k

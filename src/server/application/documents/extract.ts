@@ -32,6 +32,10 @@ import type { ExtractedFieldDraft } from "@server/infrastructure/ai/types";
 import { getDocumentStorage } from "@server/infrastructure/storage";
 import { getOcrProvider } from "@server/infrastructure/ocr";
 import { getExtractionProvider } from "@server/infrastructure/ai";
+import {
+  formatExemplarsForPrompt,
+  mineExemplars,
+} from "@server/application/ai-feedback";
 import { TIER_DEFINITIONS } from "@server/domain/billing/tier-definitions";
 import {
   AUDIT_ACTIONS,
@@ -284,10 +288,16 @@ export async function extractDocument(input: {
       })
       .where(eq(documentsTable.id, doc.id));
 
+    // D1 — feed the model this account's mined reviewer-correction exemplars (the
+    // compounding moat). Empty for a fresh account; sharpens as reviewers correct.
+    const exemplars = formatExemplarsForPrompt(
+      await mineExemplars(input.accountId)
+    );
     aiResult = await ai.extract({
       text: textResult.text,
       pageBreaks: textResult.pageBreaks,
       pageCount: textResult.pageCount,
+      exemplars,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

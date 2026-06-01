@@ -402,9 +402,27 @@ Category D — the moat made testable without real data:
   PASS — the system measurably improves with feedback. The same machinery runs on
   real decisions once usage accumulates (the deliberately-excluded gap).
 
-Remaining D follow-ons: cross-account benchmark uplift (the aggregator exists; a
-recommendation-quality metric would quantify it) + few-shot exemplar mining from
-corrections.
+### D hardened to A+ (revisit pass)
+
+The two deferred moat pieces are built — the moat now compounds on TWO axes, both
+proven, and the data/privacy design is documented:
+
+- **D1 (other half) — few-shot exemplar mining.** `mineExemplars` turns reviewer
+  EDITS (AI said X, human fixed to Y, with evidence) into few-shot exemplars that
+  the extraction prompt prepends (`formatExemplarsForPrompt` → the local extraction
+  provider). Empty for a new account; sharpens as reviewers correct — the model
+  stops repeating that account's domain mistakes. Tenant-scoped; every emitted
+  field is still verified verbatim, so a poisoned exemplar can't inject an
+  ungrounded value. Unit + DB tested, wired into the extract pipeline.
+- **D3 — cross-account benchmark uplift, measured.** `pnpm ai:uplift` proves the
+  benchmark sharpens recommendations: a recommender WITH the peer benchmark beats
+  one WITHOUT by **+27 pts (63% → 90%)** across market segments — because "are you
+  overpaying?" is a RELATIVE question a single account can't answer. Deterministic;
+  **gated in CI** alongside compounding.
+- **D4 — data-moat + privacy design doc** (`docs/product/ai-moat-and-privacy.md`):
+  the three compounding assets (calibration, exemplars, benchmark), the privacy
+  bounds (account-scoped exemplars/calibration; k-anon N≥3 benchmark; no PII;
+  advisor-not-agent), and pointers to each proof.
 
 ## Phase 6 status — DONE ✅ (the economics)
 

@@ -245,7 +245,12 @@ export class LocalLlmExtractionProvider
 
     try {
       const raw = await this.client.chatJson<{ fields?: RawField[] }>({
-        system: SYSTEM_PROMPT,
+        // D1 — prepend account-specific few-shot exemplars mined from reviewer
+        // corrections (the compounding moat). Empty until corrections accrue, so
+        // the prompt is unchanged for a new account. Exemplars are DATA, and every
+        // emitted field is still verified verbatim against the contract text — so
+        // a poisoned exemplar can never inject an ungrounded field.
+        system: input.exemplars ? `${SYSTEM_PROMPT}\n${input.exemplars}` : SYSTEM_PROMPT,
         // Wrap the untrusted contract in explicit markers so the model can tell
         // document content from instructions. Evidence is still verified against
         // the original text, so the markers can never appear in a kept quote.

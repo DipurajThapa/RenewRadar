@@ -25,6 +25,7 @@
     "ai:load": "dotenv -e .env.local -- tsx scripts/ai-bench/load.ts",
     "ai:cost": "dotenv -e .env.local -- tsx scripts/ai-bench/cost.ts",
     "ai:compounding": "tsx scripts/ai-eval/compounding.ts",
+    "ai:uplift": "tsx scripts/ai-eval/uplift.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ci": "vitest run --reporter=verbose",
