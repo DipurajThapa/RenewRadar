@@ -1,6 +1,6 @@
 # Extraction Benchmark — qwen3.6:latest
 
-Held-out synthetic corpus (seed 20260601, 12 contracts). Measures contract
+Held-out synthetic corpus (seed 20260601, 10 contracts). Measures contract
 understanding the way an AI product must: F1 on labeled fields, calibration, and
 safety (hallucination + prompt-injection resistance).
 
@@ -8,9 +8,9 @@ safety (hallucination + prompt-injection resistance).
 
 | Metric | Value | A+ bar |
 | --- | --- | --- |
-| Overall F1 | 98.9% | ≥ 92.0% |
-| Precision / Recall | 100.0% / 97.9% | — |
-| Calibration ECE | 0.005 | ≤ 0.05 |
+| Overall F1 | 98.7% | ≥ 92.0% |
+| Precision / Recall | 100.0% / 97.5% | — |
+| Calibration ECE | 0.004 | ≤ 0.05 |
 | Hallucination escapes | 0 | 0 |
 | Injection escapes | 0 | 0 |
 
@@ -20,8 +20,8 @@ safety (hallucination + prompt-injection resistance).
 | --- | --- | --- |
 | clean | 3 | 100.0% |
 | ocr_noise | 3 | 95.7% |
-| multilingual | 3 | 100.0% |
-| adversarial | 3 | 100.0% |
+| multilingual | 2 | 100.0% |
+| adversarial | 2 | 100.0% |
 
 ## Reliability (confidence vs actual accuracy)
 
@@ -31,4 +31,4 @@ safety (hallucination + prompt-injection resistance).
 | 20-40 | 0% | 0% | 0 |
 | 40-60 | 0% | 0% | 0 |
 | 60-80 | 0% | 0% | 0 |
-| 80-100 | 99% | 100% | 47 |
+| 80-100 | 100% | 100% | 39 |

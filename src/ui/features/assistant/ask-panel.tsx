@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Sparkles, ArrowRight, Send } from "lucide-react";
 import {
@@ -10,8 +10,12 @@ import {
 } from "@ui/components/primitives/dropdown-menu";
 import { ClaimRow } from "@ui/features/renewal-brief/claim-row";
 import { useToast } from "@ui/hooks/use-toast";
-import { askAssistantAction } from "@app/(app)/assistant/actions";
 import type { GroundedAnswer } from "@server/infrastructure/ai/reasoning/types";
+
+type StreamChunk =
+  | { type: "preamble"; text: string; factCount: number }
+  | { type: "answer"; answer: GroundedAnswer }
+  | { type: "error"; error: string };
 
 const SUGGESTIONS = [
   "What's my biggest risk?",
@@ -28,20 +32,53 @@ export function AskPanel() {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<GroundedAnswer | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [preamble, setPreamble] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const { toast } = useToast();
 
-  function submit(q: string) {
+  // Stream the answer (Phase B/B5): the SSE route emits an INSTANT grounded
+  // preamble first (no model wait), then the validated answer — so the panel
+  // shows immediate feedback and never streams unvalidated model text.
+  async function submit(q: string) {
     const trimmed = q.trim();
     if (!trimmed || pending) return;
-    startTransition(async () => {
-      const r = await askAssistantAction(trimmed);
-      if (!r.ok) {
-        toast({ title: "Couldn't answer that", description: r.error });
+    setPending(true);
+    setAnswer(null);
+    setPreamble(null);
+    try {
+      const res = await fetch("/assistant/stream", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: trimmed }),
+      });
+      if (!res.ok || !res.body) {
+        toast({ title: "Couldn't answer that", description: await res.text() });
         return;
       }
-      setAnswer(r.answer);
-    });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          if (!line.startsWith("data: ")) continue;
+          const chunk = JSON.parse(line.slice(6)) as StreamChunk;
+          if (chunk.type === "preamble") setPreamble(chunk.text);
+          else if (chunk.type === "answer") setAnswer(chunk.answer);
+          else if (chunk.type === "error")
+            toast({ title: "Couldn't answer that", description: chunk.error });
+        }
+      }
+    } catch {
+      toast({ title: "Couldn't answer that", description: "Network error." });
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -87,7 +124,13 @@ export function AskPanel() {
             </button>
           </div>
 
-          {!answer && (
+          {preamble && !answer && (
+            <p className="text-sm text-muted-foreground animate-pulse" role="status">
+              {preamble}
+            </p>
+          )}
+
+          {!answer && !preamble && (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-1.5">
                 {SUGGESTIONS.map((s) => (

@@ -392,9 +392,13 @@ The two deferred items are built — and the latency bar (#8) is now honestly me
   tail reflects queuing; a multi-replica served deployment meets it on the same
   harness. The strict gate belongs on served infra, not a dev box.
 
-Remaining B follow-on (optional): the SSE route + Ask-panel UI wiring to consume
-the stream (the streamable generator + its guarantees are built and tested);
-bounded-concurrency queue (the circuit breaker already shapes overload).
+**Streaming wired end-to-end (revisit):** an SSE route (`app/(app)/assistant/stream`)
+streams the chunks (same auth + RBAC + rate-limit + validation as the action), and
+the Ask panel consumes them — rendering the instant grounded preamble, then the
+validated answer. Streaming is now USER-VISIBLE, not just a tested generator.
+
+Remaining B follow-on (optional): a bounded-concurrency queue (the circuit breaker
+already shapes overload).
 
 ## Phase 5 status — core DONE ✅ (the moat machine)
 
