@@ -65,7 +65,7 @@
     ],
     "hallucinationEscapes": 0,
     "injectionEscapes": 0,
-    "ece": 0.003,
+    "ece": 0.005,
     "reliability": [
       {
         "bucket": "0-20",
@@ -93,7 +93,7 @@
       },
       {
         "bucket": "80-100",
-        "avgConfidencePct": 100,
+        "avgConfidencePct": 99,
         "accuracyPct": 100,
         "count": 47
       }

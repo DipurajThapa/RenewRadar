@@ -62,6 +62,9 @@ export function validateBrief(
 /**
  * Sibling of `validateBrief` for the Ask assistant — the same honesty gate:
  *   - drops any answer claim with no evidence (no receipts → not emitted),
+ *   - drops any claim whose evidence `detail` isn't grounded in a provided fact
+ *     (every detail must be a non-empty substring of the source texts — closes
+ *     the hole where a quote-less, fabricated narrative detail could survive),
  *   - drops any claim whose `quote` isn't a verbatim substring of a provided
  *     source text (fabricated quote → drop),
  *   - clamps confidence + re-stamps engine = "llm" iff a surviving claim is llm.
@@ -77,6 +80,13 @@ export function validateAnswer(
     if (!claim.evidence || claim.evidence.length === 0) continue; // no receipts → drop
     let evidenceOk = true;
     for (const ev of claim.evidence) {
+      // Detail grounding: every evidence item must map to a provided fact. An
+      // empty or fabricated detail (not present in any source text) is dropped —
+      // even when there is no quote to check.
+      if (!ev.detail || !haystack.includes(ev.detail)) {
+        evidenceOk = false;
+        break;
+      }
       if (ev.quote != null && !haystack.includes(ev.quote)) {
         evidenceOk = false; // fabricated quote → drop the whole claim
         break;

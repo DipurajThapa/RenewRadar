@@ -11,5 +11,5 @@ checks (no self-grading).
 | Missed-deadline rule | 100% | 100% |
 | Grounding rate | 100% | 100% |
 | Hallucination escapes | 0 | 0 |
-| Independent-judge pass | 100% | ≥ 85% |
-| Avg grounded / reasonable | 100 / 100 | — |
+| Independent-judge pass | 89% | ≥ 85% |
+| Avg grounded / reasonable | 100 / 89 | — |

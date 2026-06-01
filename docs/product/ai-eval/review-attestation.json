@@ -1,7 +1,7 @@
 {
-  "reviewedAt": "2026-06-01T08:58:57.003Z",
+  "reviewedAt": "2026-06-01T09:14:05.665Z",
   "verdict": "PASS",
-  "gitCommit": "795286e246125ecd0554279745932cbc14b301a5",
+  "gitCommit": "65ea0eca04300b6f97e2de011f7207a529569c61",
   "gitDirty": true,
   "node": "v26.0.0",
   "ollamaBaseUrl": "http://localhost:11434",
@@ -25,55 +25,55 @@
       "name": "typecheck",
       "what": "the code under review compiles",
       "ok": true,
-      "detail": "exit 0 · 2s",
-      "ms": 1550
+      "detail": "exit 0 · 1s",
+      "ms": 1456
     },
     {
       "name": "eval-logic-tests",
       "what": "the F1 / ECE / judge math + provider guards are themselves unit-tested",
       "ok": true,
       "detail": "exit 0 · 1s",
-      "ms": 1095
+      "ms": 989
     },
     {
       "name": "live-brief-proof",
       "what": "qwen3.6 produces a validated, grounded brief through the REAL production seam",
       "ok": true,
-      "detail": "exit 0 · 20s",
-      "ms": 20471
+      "detail": "exit 0 · 21s",
+      "ms": 20907
     },
     {
       "name": "live-extract-proof",
       "what": "qwen3.6 extracts contract fields with VERBATIM evidence (no fabrication)",
       "ok": true,
       "detail": "exit 0 · 15s",
-      "ms": 14969
+      "ms": 15117
     },
     {
       "name": "extraction-benchmark",
       "what": "F1 / calibration / injection-resistance on a held-out synthetic corpus",
       "ok": true,
-      "detail": "exit 0 · 161s",
-      "ms": 160848
+      "detail": "exit 0 · 152s",
+      "ms": 151976
     },
     {
       "name": "reasoning-benchmark",
       "what": "the brief is scored by a DIFFERENT model (llama3.1-storm) + rule checks",
       "ok": true,
-      "detail": "exit 0 · 138s",
-      "ms": 137755
+      "detail": "exit 0 · 142s",
+      "ms": 142254
     },
     {
       "name": "extraction-numbers",
       "what": "re-check extraction metrics against A+ thresholds + pinned model",
       "ok": true,
-      "detail": "model=qwen3.6:latest F1=98.9% (≥92) hardVariantsOk=true ECE=0.003(≤0.05) hallucEsc=0 injEsc=0"
+      "detail": "model=qwen3.6:latest F1=98.9% (≥92) hardVariantsOk=true ECE=0.005(≤0.05) hallucEsc=0 injEsc=0"
     },
     {
       "name": "reasoning-numbers",
       "what": "re-check reasoning metrics + judge INDEPENDENCE (different model)",
       "ok": true,
-      "detail": "system=qwen3.6:latest judge=llama3.1-storm:8b independent=true ruleAcc=100% grounding=100% hallucEsc=0 judgePass=100%(≥85)"
+      "detail": "system=qwen3.6:latest judge=llama3.1-storm:8b independent=true ruleAcc=100% grounding=100% hallucEsc=0 judgePass=89%(≥85)"
     }
   ],
   "extractionReport": {
@@ -138,7 +138,7 @@
     ],
     "hallucinationEscapes": 0,
     "injectionEscapes": 0,
-    "ece": 0.003,
+    "ece": 0.005,
     "reliability": [
       {
         "bucket": "0-20",
@@ -166,7 +166,7 @@
       },
       {
         "bucket": "80-100",
-        "avgConfidencePct": 100,
+        "avgConfidencePct": 99,
         "accuracyPct": 100,
         "count": 47
       }
@@ -179,8 +179,8 @@
     "groundingRatePct": 100,
     "hallucinationEscapes": 0,
     "engineLlmPct": 100,
-    "judgePassRatePct": 100,
+    "judgePassRatePct": 89,
     "avgGrounded": 100,
-    "avgReasonable": 100
+    "avgReasonable": 89
   }
 }

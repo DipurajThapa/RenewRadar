@@ -10,7 +10,7 @@ safety (hallucination + prompt-injection resistance).
 | --- | --- | --- |
 | Overall F1 | 98.9% | ≥ 92.0% |
 | Precision / Recall | 100.0% / 97.9% | — |
-| Calibration ECE | 0.003 | ≤ 0.05 |
+| Calibration ECE | 0.005 | ≤ 0.05 |
 | Hallucination escapes | 0 | 0 |
 | Injection escapes | 0 | 0 |
 
@@ -31,4 +31,4 @@ safety (hallucination + prompt-injection resistance).
 | 20-40 | 0% | 0% | 0 |
 | 40-60 | 0% | 0% | 0 |
 | 60-80 | 0% | 0% | 0 |
-| 80-100 | 100% | 100% | 47 |
+| 80-100 | 99% | 100% | 47 |

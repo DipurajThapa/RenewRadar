@@ -8,8 +8,8 @@
     "groundingRatePct": 100,
     "hallucinationEscapes": 0,
     "engineLlmPct": 100,
-    "judgePassRatePct": 100,
+    "judgePassRatePct": 89,
     "avgGrounded": 100,
-    "avgReasonable": 100
+    "avgReasonable": 89
   }
 }

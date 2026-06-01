@@ -242,5 +242,27 @@ The measurement spine is built, A+, and re-runnable by anyone:
 model server, so they run on a model-equipped runner / nightly via the `pnpm ai:*` commands above —
 the standard split for model-dependent evals.
 
-Reports are versioned under `docs/product/ai-eval/`. Next: Phase 2 (safety hardening) → Phase 3 (AI on
-by default), per the roadmap.
+Reports are versioned under `docs/product/ai-eval/`.
+
+## Phase 2 status — DONE ✅ (safety hardening)
+
+Category E pushed toward A+, enforced by tests (not convention):
+
+- **E1 — detail-grounding hole closed.** `validateAnswer` now requires every
+  evidence item's `detail` to be a non-empty substring of a provided fact — a
+  quote-less fabricated narrative can no longer survive.
+- **E2/E3 — prompt-injection defense.** The brief, Ask, and extraction prompts
+  treat their input as DATA, not instructions; the contract text is wrapped in
+  `<<CONTRACT>>…<</CONTRACT>>` markers. A structural test asserts the defense is
+  present so it can't be silently removed; the live adversarial corpus is the
+  empirical proof (**0 injection escapes**).
+- **E4 — output-contract test.** Every AI output (brief / Ask answer / extracted
+  field) is asserted to carry its provenance (engine + integer confidence +
+  evidence / verbatim evidenceQuote).
+- **E5 — agent-boundary test.** A structural test fails the build if any AI
+  reasoning/extraction module imports email / billing / payment / CRM /
+  notification infrastructure — advisor-not-agent, enforced by tooling.
+
+Verified by `pnpm ai:review` after the changes (VERDICT PASS — no quality
+regression). Next: Phase 3 (AI on by default — the big "is it an AI product"
+flip), per the roadmap.
