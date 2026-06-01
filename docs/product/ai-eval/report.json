@@ -1,0 +1,112 @@
+{
+  "summary": {
+    "model": "qwen3.6:latest",
+    "briefs": 6,
+    "llmFiredRate": "100%",
+    "recommendationAcceptableRate": "100%",
+    "agreementWithDeterministic": "50%",
+    "hallucinatedQuoteEscapes": 0,
+    "avgLatencyMs": 13559,
+    "confidenceWhenCorrect": 93,
+    "confidenceWhenIncorrect": 0,
+    "askGroundedEvidenceOk": true,
+    "askHonestNoDataOk": true
+  },
+  "briefRows": [
+    {
+      "name": "imminent-deadline-low-value",
+      "llmFired": true,
+      "action": "renewed_with_adjustments",
+      "actionOk": true,
+      "agreeWithDet": true,
+      "claims": 3,
+      "quoteEscapes": 0,
+      "confidence": 90,
+      "latencyMs": 12663
+    },
+    {
+      "name": "missed-deadline",
+      "llmFired": true,
+      "action": "deferred",
+      "actionOk": true,
+      "agreeWithDet": true,
+      "claims": 2,
+      "quoteEscapes": 0,
+      "confidence": 100,
+      "latencyMs": 7628
+    },
+    {
+      "name": "rising-above-benchmark-with-clause",
+      "llmFired": true,
+      "action": "renewed_with_adjustments",
+      "actionOk": true,
+      "agreeWithDet": true,
+      "claims": 4,
+      "quoteEscapes": 0,
+      "confidence": 90,
+      "latencyMs": 15280
+    },
+    {
+      "name": "flat-below-benchmark-low-urgency",
+      "llmFired": true,
+      "action": "renewed_with_adjustments",
+      "actionOk": true,
+      "agreeWithDet": false,
+      "claims": 4,
+      "quoteEscapes": 0,
+      "confidence": 95,
+      "latencyMs": 16262
+    },
+    {
+      "name": "no-clause-hallucination-trap",
+      "llmFired": true,
+      "action": "renewed",
+      "actionOk": true,
+      "agreeWithDet": false,
+      "claims": 3,
+      "quoteEscapes": 0,
+      "confidence": 95,
+      "latencyMs": 15496
+    },
+    {
+      "name": "credible-walkaway",
+      "llmFired": true,
+      "action": "renewed_with_adjustments",
+      "actionOk": true,
+      "agreeWithDet": false,
+      "claims": 3,
+      "quoteEscapes": 0,
+      "confidence": 85,
+      "latencyMs": 14027
+    }
+  ],
+  "askRows": [
+    {
+      "name": "biggest-risk",
+      "expectGrounded": true,
+      "llmFired": true,
+      "answers": 1,
+      "groundedEvRate": 1,
+      "honestNoData": false,
+      "latencyMs": 5418
+    },
+    {
+      "name": "vendor-spend",
+      "expectGrounded": true,
+      "llmFired": true,
+      "answers": 1,
+      "groundedEvRate": 1,
+      "honestNoData": false,
+      "latencyMs": 4977
+    },
+    {
+      "name": "unanswerable-empty-facts",
+      "expectGrounded": false,
+      "llmFired": false,
+      "answers": 0,
+      "groundedEvRate": 1,
+      "honestNoData": true,
+      "latencyMs": 0
+    }
+  ]
+}

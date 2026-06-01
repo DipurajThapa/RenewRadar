@@ -77,3 +77,13 @@ export const VENDOR_MAGIC_LINK_POLICY = {
   limit: 10,
   windowSeconds: 600,
 } as const;
+
+/**
+ * Grounded Ask assistant: 20 questions per user per 10 minutes. Generous for
+ * real use, but stops a tight question loop (and, once the LLM provider is
+ * live, token burn). The retriever is read-only + account-scoped regardless.
+ */
+export const ASK_POLICY = {
+  limit: 20,
+  windowSeconds: 600,
+} as const;

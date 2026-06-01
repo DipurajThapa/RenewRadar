@@ -143,35 +143,14 @@ export type VendorIntelligenceOutput = {
 };
 
 /**
- * Decision recommendation — what should the operator do at decide-now.
- * Conservative by design: always defers to the human if signals are mixed.
+ * NOTE: The standalone "decision recommendation" surface was removed. It was
+ * heuristic theater — a verdict produced with no evidence binding, no per-claim
+ * provenance, and no confidence, in direct conflict with the no-hallucination
+ * bar. Its job is now owned by the Renewal Intelligence Brief
+ * (`@server/infrastructure/ai/reasoning`), the single reasoning surface, whose
+ * `recommendedAction` carries full evidence + provenance + confidence. The
+ * decide-now page reads that brief directly via `getLatestBrief`.
  */
-export type DecisionRecommendationInput = {
-  vendorName: string;
-  productName: string;
-  annualValueCents: number;
-  autoRenew: boolean;
-  daysUntilNoticeDeadline: number;
-  riskBand: "low" | "medium" | "high";
-  hasPriceIncreaseClause: boolean;
-  pastSavingsAnnualCents: number;
-  noticeDeadlineMissed: boolean;
-};
-
-export type DecisionRecommendationOutput = {
-  meta: InsightMeta;
-  /** Suggested decision label or "deferred" when the call is mixed. */
-  recommendation:
-    | "renewed"
-    | "renewed_with_adjustments"
-    | "downgraded"
-    | "cancelled"
-    | "deferred";
-  /** Two- to three-sentence rationale, plain prose. */
-  rationale: string;
-  /** Ordered list of negotiation levers worth trying, 0-3 items. */
-  negotiationLevers: string[];
-};
 
 /**
  * Savings narrative — a one-liner story of how the savings were produced.
@@ -201,9 +180,6 @@ export interface AIInsightProvider {
   summarizeVendorIntelligence(
     input: VendorIntelligenceInput
   ): Promise<VendorIntelligenceOutput>;
-  recommendRenewalDecision(
-    input: DecisionRecommendationInput
-  ): Promise<DecisionRecommendationOutput>;
   narrateSavings(
     input: SavingsNarrativeInput
   ): Promise<SavingsNarrativeOutput>;
@@ -219,6 +195,12 @@ export type PriceIncreaseClauseValue = { clause: string };
 export type CancellationMethodValue = {
   method: "email" | "written_notice" | "portal" | "account_manager" | "unknown";
 };
+// AI-first generalization — obligation-generic fields. `expiry_date` shares the
+// renewal_date apply path (→ termEndDate). `issuer` / `reference_number` land in
+// the subscription's attributesJson rather than a dedicated column.
+export type ExpiryDateValue = { date: string }; // YYYY-MM-DD
+export type IssuerValue = { issuer: string };
+export type ReferenceNumberValue = { reference: string };
 
 export type ParsedValueByKey = {
   renewal_date: RenewalDateValue;
@@ -227,4 +209,7 @@ export type ParsedValueByKey = {
   contract_value_cents: ContractValueCentsValue;
   price_increase_clause: PriceIncreaseClauseValue;
   cancellation_method: CancellationMethodValue;
+  expiry_date: ExpiryDateValue;
+  issuer: IssuerValue;
+  reference_number: ReferenceNumberValue;
 };

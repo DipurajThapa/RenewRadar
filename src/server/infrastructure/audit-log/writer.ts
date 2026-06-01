@@ -73,6 +73,9 @@ export const AUDIT_ACTIONS = {
   extractedFieldEdited: "extracted_field.edited",
   extractedFieldRejected: "extracted_field.rejected",
   extractedFieldApplied: "extracted_field.applied",
+  // Confidence-gated AI auto-apply + its one-click undo (Gate 2b)
+  extractedFieldAutoApplied: "extracted_field.auto_applied",
+  extractedFieldReverted: "extracted_field.reverted",
   // data export (GDPR-style account download)
   accountDataExported: "account.data_exported",
   // user lifecycle (P7.2 — archive replaces hard delete; restore brings back)

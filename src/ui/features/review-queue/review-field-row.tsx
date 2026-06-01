@@ -19,6 +19,11 @@ import { useToast } from "@ui/hooks/use-toast";
 import { formatCurrency } from "@shared/utils";
 import { reviewFieldAction } from "@app/(app)/review-queue/actions";
 import type { PendingReviewField } from "@server/infrastructure/db/repositories/ai-extractions";
+import {
+  fieldProvenance,
+  PROVENANCE_LABEL_TEXT,
+  type ProvenanceLabel,
+} from "@server/domain/provenance/labels";
 
 const FIELD_LABEL: Record<string, string> = {
   renewal_date: "Renewal date",
@@ -27,6 +32,18 @@ const FIELD_LABEL: Record<string, string> = {
   contract_value_cents: "Annualized value",
   price_increase_clause: "Price increase clause",
   cancellation_method: "Cancellation method",
+  // Phase-1 obligation-generic keys.
+  expiry_date: "Expiry date",
+  issuer: "Issuer",
+  reference_number: "Reference number",
+};
+
+/** UI tone per derived provenance band (the band logic itself lives in the
+ *  domain helper — this map is the only UI concern). */
+const PROVENANCE_BADGE_CLASS: Record<ProvenanceLabel, string> = {
+  verified: "bg-green-50 text-green-900 border-green-200",
+  inferred: "bg-amber-50 text-amber-900 border-amber-200",
+  uncertain: "bg-red-50 text-red-900 border-red-200",
 };
 
 /**
@@ -88,6 +105,12 @@ export function ReviewFieldRow({ field }: { field: PendingReviewField }) {
     field.fieldKey
   );
   const sameAsCurrent = currentDisplay && currentDisplay === aiDisplay;
+  // Derived trust band — single source of truth shared with the action package.
+  const provenance = fieldProvenance(
+    field.confidence,
+    field.reviewStatus,
+    !!field.evidenceQuote
+  );
 
   return (
     <Card>
@@ -98,9 +121,9 @@ export function ReviewFieldRow({ field }: { field: PendingReviewField }) {
           </div>
           <Badge
             variant="outline"
-            className={confidenceClass(field.confidence)}
+            className={PROVENANCE_BADGE_CLASS[provenance]}
           >
-            {field.confidence}% confidence
+            {PROVENANCE_LABEL_TEXT[provenance]} · {field.confidence}%
           </Badge>
           {sameAsCurrent && (
             <Badge variant="outline" className="bg-gray-50 text-gray-600">
@@ -232,6 +255,7 @@ function displayValue(
   const v = value as Record<string, unknown>;
   switch (fieldKey) {
     case "renewal_date":
+    case "expiry_date":
       return typeof v.date === "string" ? v.date : null;
     case "notice_period_days":
       return typeof v.days === "number" ? `${v.days} days` : null;
@@ -245,6 +269,18 @@ function displayValue(
       return typeof v.clause === "string" ? v.clause : null;
     case "cancellation_method":
       return typeof v.method === "string" ? humanizeMethod(v.method) : null;
+    case "issuer":
+      return typeof v.issuer === "string"
+        ? v.issuer
+        : typeof v.value === "string"
+          ? v.value
+          : null;
+    case "reference_number":
+      return typeof v.reference === "string"
+        ? v.reference
+        : typeof v.value === "string"
+          ? v.value
+          : null;
     default:
       return null;
   }
@@ -254,12 +290,6 @@ function humanizeMethod(m: string): string {
   return m.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function confidenceClass(pct: number): string {
-  if (pct >= 85) return "bg-green-50 text-green-900 border-green-200";
-  if (pct >= 65) return "bg-amber-50 text-amber-900 border-amber-200";
-  return "bg-red-50 text-red-900 border-red-200";
-}
-
 // ─── edit helpers ───────────────────────────────────────────────────────────
 
 function extractScalar(value: unknown, fieldKey: string): string {
@@ -267,6 +297,7 @@ function extractScalar(value: unknown, fieldKey: string): string {
   const v = value as Record<string, unknown>;
   switch (fieldKey) {
     case "renewal_date":
+    case "expiry_date":
       return typeof v.date === "string" ? v.date : "";
     case "notice_period_days":
       return typeof v.days === "number" ? String(v.days) : "";
@@ -278,6 +309,18 @@ function extractScalar(value: unknown, fieldKey: string): string {
       return typeof v.clause === "string" ? v.clause : "";
     case "cancellation_method":
       return typeof v.method === "string" ? v.method : "";
+    case "issuer":
+      return typeof v.issuer === "string"
+        ? v.issuer
+        : typeof v.value === "string"
+          ? v.value
+          : "";
+    case "reference_number":
+      return typeof v.reference === "string"
+        ? v.reference
+        : typeof v.value === "string"
+          ? v.value
+          : "";
     default:
       return "";
   }
@@ -291,6 +334,7 @@ function buildEditedJson(
   if (!trimmed) return null;
   switch (fieldKey) {
     case "renewal_date":
+    case "expiry_date":
       if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
       return { date: trimmed };
     case "notice_period_days": {
@@ -314,6 +358,10 @@ function buildEditedJson(
       if (!valid.includes(trimmed)) return null;
       return { method: trimmed };
     }
+    case "issuer":
+      return { issuer: trimmed };
+    case "reference_number":
+      return { reference: trimmed };
     default:
       return null;
   }

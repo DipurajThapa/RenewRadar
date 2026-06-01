@@ -18,6 +18,7 @@ import {
 import {
   applyExtractedField,
   reviewExtractedField,
+  revertAutoAppliedField,
 } from "@server/application/documents/apply-field";
 
 export type ReviewActionResult =
@@ -83,6 +84,41 @@ export async function reviewFieldAction(
       return { ok: false, error: `Reviewed but couldn't apply: ${applyResult.error}` };
     }
   }
+
+  revalidatePath("/review-queue");
+  revalidatePath("/documents");
+  revalidatePath("/subscriptions");
+  revalidatePath("/dashboard");
+  revalidatePath("/action-queue");
+  return { ok: true };
+}
+
+const revertSchema = z.object({ fieldId: z.string().uuid() });
+
+/**
+ * One-click undo for an AI auto-applied field. Restores the previous value and
+ * marks the field as a human-rejected correction (Gate-4 feedback signal).
+ */
+export async function revertAutoAppliedFieldAction(
+  fieldId: string
+): Promise<ReviewActionResult> {
+  const { account, user } = await getCurrentAccountAndUser();
+  try {
+    requireRole(user, "member");
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { ok: false, error: err.message };
+    throw err;
+  }
+
+  const parsed = revertSchema.safeParse({ fieldId });
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+
+  const result = await revertAutoAppliedField({
+    accountId: account.id,
+    actorUserId: user.id,
+    fieldId: parsed.data.fieldId,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
 
   revalidatePath("/review-queue");
   revalidatePath("/documents");

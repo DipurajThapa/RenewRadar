@@ -2,6 +2,7 @@ import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { Zap } from "lucide-react";
 import { NotificationBell } from "@ui/components/layout/notification-bell";
+import { AskPanel } from "@ui/features/assistant/ask-panel";
 import { Avatar, AvatarFallback } from "@ui/components/primitives/avatar";
 import { Badge } from "@ui/components/primitives/badge";
 import { MobileAppNav } from "@ui/components/layout/mobile-app-nav";
@@ -80,6 +81,7 @@ export async function TopNav({
       </div>
 
       <div className="flex items-center gap-2">
+        <AskPanel />
         <NotificationBell unreadCount={unread} notifications={recent} />
         <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
         {isDemoMode ? <DemoUserBadge user={user} /> : <UserButton afterSignOutUrl="/" />}

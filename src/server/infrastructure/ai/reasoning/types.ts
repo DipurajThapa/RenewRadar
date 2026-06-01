@@ -102,9 +102,52 @@ export type RenewalIntelligenceBrief = {
   predictedNextAnnualCents: { point: number; low: number; high: number } | null;
 };
 
+// ─── Grounded Ask assistant (Phase 3) ───────────────────────────────────────
+// A question is answered ONLY from retrieved facts. Each fact carries its own
+// source ref + deep-link, and every answer claim's evidence IS the facts it was
+// built from — so `validateAnswer` can drop anything ungrounded, exactly like
+// `validateBrief` does for the brief.
+
+export type RetrievedFact = {
+  /** Where it came from — e.g. "account_risk", "vendor_intelligence", "savings". */
+  source: string;
+  /** Human-readable fact, composed from real account data. */
+  detail: string;
+  /** Verbatim quote when the fact is lifted from a clause; else null. */
+  quote: string | null;
+  /** The entity id this fact concerns (for provenance + dedup). */
+  refId: string | null;
+  /** Deep-link into the existing screen that owns this fact. */
+  href: string | null;
+};
+
+export type AnswerClaim = {
+  statement: string;
+  engine: ReasoningEngine; // honest per-claim provenance
+  confidencePct: number; // integer 0..100
+  evidence: RetrievedFact[]; // empty array forbidden for emitted claims
+};
+
+export type QuestionInput = {
+  question: string;
+  /** Facts retrieved deterministically from the account's own data. */
+  facts: RetrievedFact[];
+};
+
+export type GroundedAnswer = {
+  meta: InsightMeta & { engine: ReasoningEngine };
+  question: string;
+  summary: string; // ≤ 200 chars
+  answers: AnswerClaim[];
+  /** What we couldn't answer / what's absent — never a fabricated guess. */
+  missingInfo: string[];
+  deepLinks: { label: string; href: string }[];
+};
+
 export interface ReasoningProvider {
   readonly providerName: string;
   readonly model: string;
   readonly promptVersion: string;
   buildBrief(input: RenewalBriefInput): Promise<RenewalIntelligenceBrief>;
+  answerQuestion(input: QuestionInput): Promise<GroundedAnswer>;
 }

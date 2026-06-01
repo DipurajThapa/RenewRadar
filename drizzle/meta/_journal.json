@@ -176,6 +176,34 @@
       "when": 1780067572715,
       "tag": "0024_renewal_notice_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780089109044,
+      "tag": "0025_agent_auto_prep",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780090491344,
+      "tag": "0026_icy_hex",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1780090987132,
+      "tag": "0027_renewal_item_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1780091598638,
+      "tag": "0028_renewal_item_enums",
+      "breakpoints": true
     }
   ]
 }

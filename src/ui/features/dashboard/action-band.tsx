@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Check, Clock, RotateCcw } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Clock, ShieldAlert } from "lucide-react";
 import { Card } from "@ui/components/primitives/card";
 import { Button } from "@ui/components/primitives/button";
 import { cn } from "@shared/utils";
@@ -14,7 +14,13 @@ import type { ActionBandCounts } from "@server/infrastructure/db/repositories/da
  * so theming flows from globals.css. Future state (V1.5+) cards use a
  * dashed-border treatment so they don't pretend to be live.
  */
-export function ActionBand({ counts }: { counts: ActionBandCounts }) {
+export function ActionBand({
+  counts,
+  highRiskCount = 0,
+}: {
+  counts: ActionBandCounts;
+  highRiskCount?: number;
+}) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-stagger">
       <ActionCard
@@ -33,14 +39,15 @@ export function ActionBand({ counts }: { counts: ActionBandCounts }) {
         cta="Decide now"
         tone={counts.renewalsAwaitingDecision > 0 ? "moderate" : "ok"}
       />
+      {/* Live account-risk count — replaced the old "coming soon" placeholder.
+          Links into the unified queue where the risky renewals surface. */}
       <ActionCard
-        icon={<RotateCcw className="h-5 w-5" />}
-        count={0}
-        label="inactive seats past your threshold"
-        href="#"
-        cta="Coming soon"
-        tone="future"
-        disabled
+        icon={<ShieldAlert className="h-5 w-5" />}
+        count={highRiskCount}
+        label="renewals at high risk"
+        href="/action-queue"
+        cta="Review risk"
+        tone={highRiskCount > 0 ? "urgent" : "ok"}
       />
     </div>
   );

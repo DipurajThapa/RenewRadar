@@ -8,6 +8,7 @@ import {
 } from "@server/infrastructure/db/schema";
 import type {
   NewSubscription,
+  RenewalItemCategory,
   Subscription,
   Vendor,
 } from "@server/infrastructure/db/schema";
@@ -232,6 +233,11 @@ export type CreateDraftInput = {
    *  with billing_cycle=annual so existing reports treat it sanely. */
   annualizedUsdCents: number;
   notes?: string | null;
+  /** Obligation type — defaults to saas_subscription so existing callers are
+   *  unaffected; non-SaaS intake (a license, an insurance policy, a notice)
+   *  rides the same draft path by passing a category + type-specific attributes. */
+  category?: RenewalItemCategory;
+  attributes?: Record<string, unknown>;
 };
 
 /**
@@ -319,6 +325,8 @@ export async function createSubscriptionDraft(
         accountId: input.accountId,
         vendorId: vendor.id,
         ownerUserId: input.actorUserId,
+        category: input.category ?? "saas_subscription",
+        attributesJson: input.attributes ?? {},
         productName: input.productName.trim(),
         planName: null,
         billingCycle: "annual" as const,

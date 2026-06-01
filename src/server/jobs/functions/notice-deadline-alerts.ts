@@ -23,6 +23,7 @@ import {
 import { renderNoticeDeadlineEmail } from "@server/infrastructure/email/templates/notice-deadline-alert";
 import { sendEmail } from "@server/infrastructure/email/client";
 import { resolveChannelPreference } from "@server/domain/notifications/labels";
+import { runComplianceExpiryAlerts } from "@server/jobs/functions/compliance-expiry-alerts";
 
 /**
  * Daily cron at 08:00 UTC.
@@ -92,10 +93,6 @@ export const noticeDeadlineAlerts = inngest.createFunction(
           )
         )
     );
-
-    if (due.length === 0) {
-      return { sent: 0, processed: 0, message: "Nothing due today" };
-    }
 
     let sent = 0;
     let skipped = 0;
@@ -264,11 +261,19 @@ export const noticeDeadlineAlerts = inngest.createFunction(
       }
     }
 
+    // Second phase, same daily firing (no parallel cron): warn on compliance
+    // artifacts whose `expiresAt` is approaching, reusing the notification +
+    // email dispatch machinery above.
+    const compliance = await runComplianceExpiryAlerts(
+      <T,>(id: string, fn: () => Promise<T>) => step.run(id, fn) as Promise<T>
+    );
+
     return {
       processed: due.length,
       sent,
       skipped,
       failed,
+      compliance,
     };
   }
 );

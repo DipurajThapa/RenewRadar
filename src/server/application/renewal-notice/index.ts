@@ -34,7 +34,8 @@ export class RenewalNoticeError extends Error {
 export async function generateAndStoreNoticeDraft(input: {
   accountId: string;
   subscriptionId: string;
-  actorUserId: string;
+  /** null = autonomous Renewal Agent (system actor). */
+  actorUserId: string | null;
 }): Promise<RenewalNoticeDraft> {
   const briefRow = await getLatestBrief(input.accountId, input.subscriptionId);
   if (!briefRow) {

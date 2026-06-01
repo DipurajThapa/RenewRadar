@@ -5,6 +5,7 @@ import { accountsTable, integrationsTable } from "@server/infrastructure/db/sche
 import { listActionQueueRows } from "@server/infrastructure/db/repositories/action-queue";
 import { decryptJson } from "@server/infrastructure/crypto/envelope";
 import { hasTierFeature } from "@server/domain/billing/tier-features";
+import { getSlackChannel } from "@server/infrastructure/notifications/slack-channel";
 import { createLogger } from "@server/infrastructure/observability/logger";
 
 const log = createLogger({ component: "jobs.slack_daily_summary" });
@@ -98,11 +99,7 @@ export const slackDailySummary = inngest.createFunction(
       }
 
       const result = await step.run(`post-${account.id}`, async () =>
-        fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: lines.join("\n") }),
-        })
+        getSlackChannel().post(webhookUrl, { text: lines.join("\n") })
       );
 
       if (result.ok) {

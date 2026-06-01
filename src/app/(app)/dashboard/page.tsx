@@ -7,8 +7,12 @@ import {
   getRecentActivity,
   getRenewalCalendarSnapshot,
 } from "@server/infrastructure/db/repositories/dashboard";
+import { listAgentPreppedItems } from "@server/infrastructure/db/repositories/renewals";
 import { buildDashboardBenchmarkRows } from "@server/application/dashboard-benchmarks";
+import { getAccountRiskSummary } from "@server/application/account-risk";
 import { DashboardBenchmarkBand } from "@ui/features/dashboard/benchmark-band";
+import { PreparedForYou } from "@ui/features/dashboard/prepared-for-you";
+import { AccountRiskCard } from "@ui/features/dashboard/account-risk-card";
 import { DashboardGreeting } from "@ui/features/dashboard/greeting";
 import { ActionBand } from "@ui/features/dashboard/action-band";
 import { KpiStrip } from "@ui/features/dashboard/kpi-strip";
@@ -57,6 +61,8 @@ export default async function DashboardPage() {
     anomalies,
     activity,
     benchmarkRows,
+    preppedItems,
+    riskSummary,
   ] = await Promise.all([
     getActionBandCounts(account.id),
     getDashboardKpis(account.id),
@@ -65,6 +71,8 @@ export default async function DashboardPage() {
     getAnomalies(account.id),
     getRecentActivity(account.id, 8),
     buildDashboardBenchmarkRows(account.id).catch(() => []),
+    listAgentPreppedItems(account.id),
+    getAccountRiskSummary(account.id).catch(() => null),
   ]);
 
   if (kpis.trackedSubscriptions === 0) {
@@ -107,8 +115,19 @@ export default async function DashboardPage() {
           title="Action queue"
           description="Counts of what's open at this moment."
         />
-        <ActionBand counts={actions} />
+        <ActionBand
+          counts={actions}
+          highRiskCount={riskSummary?.highCount ?? 0}
+        />
       </section>
+
+      {/* Account-risk narrative (S4) — the live replacement for the old
+          "coming soon" card. Renders nothing on a risk-free account. */}
+      {riskSummary && <AccountRiskCard summary={riskSummary} />}
+
+      {/* The autonomous agent's prepared work, surfaced (S3). Renders nothing
+          when the agent hasn't prepped anything still-open. */}
+      <PreparedForYou items={preppedItems} />
 
       {account.planTier === "free_forever" &&
         kpis.trackedSubscriptions >= 5 && <FreeForeverNudge />}

@@ -1,10 +1,96 @@
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
+  accountsTable,
+  renewalBriefsTable,
   renewalEventsTable,
   subscriptionsTable,
   vendorsTable,
 } from "@server/infrastructure/db/schema";
+
+/**
+ * CRON-ONLY cross-account read for the autonomous Renewal Agent. Returns
+ * (accountId, subscriptionId) pairs whose renewal event has entered its notice
+ * window / action-needed state, whose account hasn't switched the agent off
+ * (agentAutoPrep), and which have NOT been prepped yet (no brief exists). Each
+ * pair is re-scoped by its own accountId in the agent loop. Never call from a
+ * request path.
+ */
+export async function listSubscriptionsNeedingAutoPrep(): Promise<
+  Array<{ accountId: string; subscriptionId: string }>
+> {
+  return db
+    .selectDistinct({
+      accountId: renewalEventsTable.accountId,
+      subscriptionId: renewalEventsTable.subscriptionId,
+    })
+    .from(renewalEventsTable)
+    .innerJoin(accountsTable, eq(accountsTable.id, renewalEventsTable.accountId))
+    .leftJoin(
+      renewalBriefsTable,
+      eq(renewalBriefsTable.subscriptionId, renewalEventsTable.subscriptionId)
+    )
+    .where(
+      and(
+        inArray(renewalEventsTable.status, ["notice_window", "action_needed"]),
+        eq(accountsTable.agentAutoPrep, true),
+        isNull(renewalBriefsTable.id)
+      )
+    );
+}
+
+export type AgentPreppedItem = {
+  subscriptionId: string;
+  vendorName: string;
+  productName: string;
+  recommendedAction: string;
+  confidencePct: number;
+  noticeDeadline: string;
+  preppedAt: Date;
+};
+
+/**
+ * The autonomous Renewal Agent's silent output, surfaced for the dashboard
+ * "Prepared for you" rollup. Returns briefs the agent prepped
+ * (`createdByUserId IS NULL`) for renewal events that are STILL open
+ * (notice_window / action_needed) — i.e. work that's ready and still needs the
+ * human. accountId-first scoping; soonest deadline first.
+ */
+export async function listAgentPreppedItems(
+  accountId: string,
+  limit = 6
+): Promise<AgentPreppedItem[]> {
+  const rows = await db
+    .select({
+      subscriptionId: renewalBriefsTable.subscriptionId,
+      vendorName: vendorsTable.name,
+      productName: subscriptionsTable.productName,
+      recommendedAction: renewalBriefsTable.recommendedAction,
+      confidencePct: renewalBriefsTable.confidence,
+      noticeDeadline: renewalEventsTable.noticeDeadline,
+      preppedAt: renewalBriefsTable.createdAt,
+    })
+    .from(renewalBriefsTable)
+    .innerJoin(
+      renewalEventsTable,
+      eq(renewalEventsTable.id, renewalBriefsTable.renewalEventId)
+    )
+    .innerJoin(
+      subscriptionsTable,
+      eq(subscriptionsTable.id, renewalBriefsTable.subscriptionId)
+    )
+    .innerJoin(vendorsTable, eq(vendorsTable.id, subscriptionsTable.vendorId))
+    .where(
+      and(
+        eq(renewalBriefsTable.accountId, accountId),
+        isNull(renewalBriefsTable.createdByUserId),
+        inArray(renewalEventsTable.status, ["notice_window", "action_needed"])
+      )
+    )
+    .orderBy(asc(renewalEventsTable.noticeDeadline))
+    .limit(limit);
+  return rows;
+}
 
 export type RenewalRange = 30 | 90 | 180 | 365;
 

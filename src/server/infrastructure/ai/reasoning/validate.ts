@@ -7,7 +7,9 @@
  *   - recomputes the headline from the recommendation + top claim.
  */
 import type {
+  AnswerClaim,
   BriefClaim,
+  GroundedAnswer,
   RenewalIntelligenceBrief,
 } from "./types";
 
@@ -54,6 +56,44 @@ export function validateBrief(
     claims: kept,
     meta: { ...brief.meta, engine },
     headline: headline.slice(0, 140),
+  };
+}
+
+/**
+ * Sibling of `validateBrief` for the Ask assistant — the same honesty gate:
+ *   - drops any answer claim with no evidence (no receipts → not emitted),
+ *   - drops any claim whose `quote` isn't a verbatim substring of a provided
+ *     source text (fabricated quote → drop),
+ *   - clamps confidence + re-stamps engine = "llm" iff a surviving claim is llm.
+ * Applied to BOTH the deterministic and the LLM answer.
+ */
+export function validateAnswer(
+  answer: GroundedAnswer,
+  opts: { sourceTexts: string[] }
+): GroundedAnswer {
+  const haystack = opts.sourceTexts.join("\n");
+  const kept: AnswerClaim[] = [];
+  for (const claim of answer.answers) {
+    if (!claim.evidence || claim.evidence.length === 0) continue; // no receipts → drop
+    let evidenceOk = true;
+    for (const ev of claim.evidence) {
+      if (ev.quote != null && !haystack.includes(ev.quote)) {
+        evidenceOk = false; // fabricated quote → drop the whole claim
+        break;
+      }
+    }
+    if (!evidenceOk) continue;
+    kept.push({
+      ...claim,
+      confidencePct: clampInt(claim.confidencePct, 0, 100),
+    });
+  }
+
+  const engine = kept.some((c) => c.engine === "llm") ? "llm" : "deterministic";
+  return {
+    ...answer,
+    answers: kept,
+    meta: { ...answer.meta, engine },
   };
 }
 

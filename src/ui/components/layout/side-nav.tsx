@@ -65,9 +65,9 @@ const GROUPS: readonly NavGroup[] = [
       },
       {
         href: "/action-queue",
-        label: "Action queue",
+        label: "Needs you",
         icon: ListChecks,
-        description: "Pending decisions, ranked by urgency",
+        description: "Renewals, reviews, approvals, requests + spend — ranked",
       },
     ],
   },

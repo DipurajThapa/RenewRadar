@@ -6,12 +6,14 @@
  * points, so the price_trajectory pass fires with a predicted next renewal.
  */
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   accountsTable,
   recurringChargesTable,
   spendConnectionsTable,
   spendTransactionsTable,
+  subscriptionsTable,
   usersTable,
 } from "@server/infrastructure/db/schema";
 import {
@@ -155,5 +157,75 @@ describe("brief reasons over the spend feed (A1)", () => {
     expect(keys).toContain("price_trajectory");
     expect(brief.predictedNextAnnualCents).not.toBeNull();
     expect(brief.predictedNextAnnualCents!.point).toBeGreaterThan(600_000);
+  });
+
+  it("drops merchant charges an order of magnitude off the contract value", async () => {
+    // The $500/mo plan ($6,000/yr anchor) plus a $7,000 platform charge that
+    // shares the same merchant — a different line item. It annualizes to
+    // $84,000/yr (14× the anchor) and must NOT be folded into THIS
+    // subscription's trajectory, or it would blow up the projection.
+    const sub = await seedSubWithSpendSeries();
+    const [conn] = await db
+      .select()
+      .from(spendConnectionsTable)
+      .where(eq(spendConnectionsTable.accountId, accountId));
+    await db.insert(spendTransactionsTable).values({
+      accountId,
+      connectionId: conn!.id,
+      externalId: "datadog-contaminant",
+      rawMerchant: "DATADOG INC",
+      normalizedMerchant: "datadog",
+      amountCents: 700_000, // $7,000 one-off platform charge
+      currency: "USD",
+      chargedOn: "2026-05-15",
+      status: "grouped",
+    });
+
+    const input = await buildRenewalBriefInput(
+      accountId,
+      sub.id,
+      new Date("2026-06-01")
+    );
+    const feed = input!.chargeHistory.filter((c) => c.source === "spend_feed");
+    // the six in-band charges remain; the $84k/yr contaminant is excluded
+    expect(feed.length).toBe(6);
+    expect(feed.every((p) => p.totalAnnualizedCents < 1_000_000)).toBe(true);
+  });
+
+  it("takes notice urgency from the active renewal event, not a stale sub term", async () => {
+    // Repro of the brief's negative-days bug: the renewal event tracks the
+    // upcoming cycle (deadline 2026-06-03), but the subscription's termEndDate
+    // still points at the prior cycle. The brief must read the event's deadline
+    // (4 days out) — not the stale term (which would compute a negative count).
+    const vendor = await ensureVendor({ accountId, name: "Notion" });
+    const sub = await createSubscriptionWithRenewalEvent({
+      accountId,
+      actorUserId: userId,
+      vendorId: vendor.id,
+      data: {
+        productName: "Plus",
+        billingCycle: "annual",
+        termStartDate: "2025-07-03",
+        termEndDate: "2026-07-03",
+        autoRenew: true,
+        noticePeriodDays: 30, // → event notice deadline 2026-06-03
+        totalSeats: 1,
+        unitPriceCents: 90_000,
+      },
+    });
+    // Stale term: never rolled forward — its derived deadline is ~a year ago.
+    await db
+      .update(subscriptionsTable)
+      .set({ termEndDate: "2025-07-03" })
+      .where(eq(subscriptionsTable.id, sub.id));
+
+    const input = await buildRenewalBriefInput(
+      accountId,
+      sub.id,
+      new Date("2026-05-30")
+    );
+    expect(input).not.toBeNull();
+    expect(input!.daysUntilNoticeDeadline).toBe(4); // from the event, not -361
+    expect(input!.daysUntilNoticeDeadline).toBeGreaterThan(0);
   });
 });

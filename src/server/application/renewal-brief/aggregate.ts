@@ -26,13 +26,23 @@ import {
 import { getVendorBenchmark } from "@server/application/vendor-benchmarks";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import {
-  calculateNoticeDeadline,
+  daysUntilDate,
   daysUntilNoticeDeadline,
 } from "@server/domain/notice-deadline/calculate";
 import type {
   ChargePoint,
   RenewalBriefInput,
 } from "@server/infrastructure/ai/reasoning/types";
+
+/**
+ * How far an observed spend charge may sit from the contract's own annualized
+ * cost and still be folded into the price trajectory. 6× tolerates aggressive
+ * real increases / seat growth while excluding order-of-magnitude contamination
+ * (a $7k platform charge folded into a $900 plan's projection). Outside the
+ * band, the charge is dropped; if that leaves < 2 clean points the trajectory
+ * pass suppresses the projection rather than asserting a wrong figure.
+ */
+const SPEND_TRAJECTORY_BAND_FACTOR = 6;
 
 export async function buildRenewalBriefInput(
   accountId: string,
@@ -55,12 +65,13 @@ export async function buildRenewalBriefInput(
   const chargeHistory: ChargePoint[] = [];
   // [M4] anchor t0 at termStart with the subscription's own annualized cost.
   const anchorDate = sub.termStartDate ?? sub.createdAt.toISOString().slice(0, 10);
+  const anchorAnnualizedCents = annualizeCents(
+    sub.totalCostPerPeriodCents,
+    sub.billingCycle
+  );
   chargeHistory.push({
     effectiveDate: anchorDate,
-    totalAnnualizedCents: annualizeCents(
-      sub.totalCostPerPeriodCents,
-      sub.billingCycle
-    ),
+    totalAnnualizedCents: anchorAnnualizedCents,
     source: "term_start",
     refId: null,
   });
@@ -97,12 +108,24 @@ export async function buildRenewalBriefInput(
       confirmedCharge.currency
     );
     for (const t of txns) {
+      const annualized = annualizeCents(t.amountCents, confirmedCharge.detectedCycle);
+      // Only fold charges that plausibly belong to THIS subscription's price
+      // line. A merchant feed can carry unrelated line items (e.g. a $7k
+      // platform charge alongside a $900 plan); folding those would let an
+      // order-of-magnitude-off value contaminate the OLS projection and produce
+      // a confidently-wrong figure. Keep within a generous band of the
+      // contract's own annualized cost. If the anchor is unknown (≤0) we can't
+      // define a band, so keep all (pre-guard behavior).
+      if (
+        anchorAnnualizedCents > 0 &&
+        (annualized < anchorAnnualizedCents / SPEND_TRAJECTORY_BAND_FACTOR ||
+          annualized > anchorAnnualizedCents * SPEND_TRAJECTORY_BAND_FACTOR)
+      ) {
+        continue;
+      }
       chargeHistory.push({
         effectiveDate: t.chargedOn,
-        totalAnnualizedCents: annualizeCents(
-          t.amountCents,
-          confirmedCharge.detectedCycle
-        ),
+        totalAnnualizedCents: annualized,
         source: "spend_feed",
         refId: t.id,
       });
@@ -155,12 +178,15 @@ export async function buildRenewalBriefInput(
     }));
 
   // ── notice urgency ────────────────────────────────────────────────────────
-  const days = daysUntilNoticeDeadline(
-    sub.termEndDate,
-    sub.noticePeriodDays,
-    today
-  );
-  void calculateNoticeDeadline; // (kept import parity with the spec; days is enough)
+  // Prefer the active renewal event's authoritative deadline — the same source
+  // the Needs-you queue and the action package read. A subscription's
+  // termEndDate can still point at a prior cycle while an event already tracks
+  // the upcoming renewal; deriving the deadline from it would report a negative
+  // day count that contradicts every other surface. Fall back to the
+  // term-derived calc only when no event deadline exists.
+  const days = renewalEvent?.noticeDeadline
+    ? daysUntilDate(renewalEvent.noticeDeadline, today)
+    : daysUntilNoticeDeadline(sub.termEndDate, sub.noticePeriodDays, today);
   const noticeDeadlineMissed = renewalEvent?.status === "missed";
 
   return {

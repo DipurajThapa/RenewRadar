@@ -104,6 +104,22 @@ describe("DeterministicReasoningProvider", () => {
     expect(brief.claims.find((c) => c.key === "price_trajectory")).toBeUndefined();
   });
 
+  it("suppresses a projection that diverges by an order of magnitude from observed charges", async () => {
+    // A steep, erratic series (e.g. a contaminated history) extrapolates to a
+    // figure many times the largest observed charge. The pass must refuse to
+    // assert it — an honest "no projection" beats a confident wrong number.
+    const brief = await provider.buildBrief(
+      baseInput({
+        chargeHistory: [
+          { effectiveDate: "2025-01-01", totalAnnualizedCents: 1_000_000, source: "term_start", refId: null },
+          { effectiveDate: "2025-02-01", totalAnnualizedCents: 2_000_000, source: "spend_feed", refId: "t1" },
+        ],
+      })
+    );
+    expect(brief.predictedNextAnnualCents).toBeNull();
+    expect(brief.claims.find((c) => c.key === "price_trajectory")).toBeUndefined();
+  });
+
   it("penalizes recommendation confidence when signals disagree", async () => {
     // rising trajectory but BELOW median → conflict → lower confidence
     const conflicting = await provider.buildBrief(

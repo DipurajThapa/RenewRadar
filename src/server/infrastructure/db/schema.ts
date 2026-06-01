@@ -40,7 +40,35 @@ export const billingCycleEnum = pgEnum("billing_cycle", [
   "quarterly",
   "annual",
   "multi_year",
+  // A one-time obligation that simply expires (a perpetual license, a cert, a
+  // government notice) — no recurring cadence.
+  "one_time",
 ]);
+
+/**
+ * AI-first generalization: the `subscription` row is the universal "renewal
+ * item." `category` is the single discriminator that lets one engine
+ * (renewal_event + brief + agent + alerts + audit) serve every obligation type
+ * — SaaS, licenses, contracts, insurance, compliance certs, government notices,
+ * domains, warranties, memberships, personal items — with NO parallel table.
+ * Defaults to `saas_subscription` so every existing row is non-breaking.
+ */
+export const renewalItemCategoryEnum = pgEnum("renewal_item_category", [
+  "saas_subscription",
+  "software_license",
+  "contract",
+  "vendor_agreement",
+  "insurance_policy",
+  "compliance_cert",
+  "government_notice",
+  "domain_dns",
+  "warranty_amc",
+  "professional_membership",
+  "personal_item",
+  "other",
+]);
+export type RenewalItemCategory =
+  (typeof renewalItemCategoryEnum.enumValues)[number];
 
 export const renewalEventStatusEnum = pgEnum("renewal_event_status", [
   "upcoming",
@@ -103,6 +131,12 @@ export const documentKindEnum = pgEnum("document_kind", [
   "contract",
   "amendment",
   "invoice",
+  // AI-first generalization — obligation document types beyond SaaS contracts.
+  "license",
+  "certificate",
+  "policy",
+  "notice",
+  "statement",
   "other",
 ]);
 
@@ -125,6 +159,12 @@ export const aiFieldKeyEnum = pgEnum("ai_field_key", [
   "contract_value_cents",
   "price_increase_clause",
   "cancellation_method",
+  // AI-first generalization — obligation-generic extracted fields. `expiry_date`
+  // maps to termEndDate (same apply path as renewal_date); `issuer` and
+  // `reference_number` land in attributesJson (no column-per-field).
+  "expiry_date",
+  "issuer",
+  "reference_number",
 ]);
 
 export const aiFieldReviewStatusEnum = pgEnum("ai_field_review_status", [
@@ -243,6 +283,10 @@ export const notificationTriggerEnum = pgEnum("notification_trigger", [
   // T4.10 Slice 4 — a connected vendor published an announcement
   // (price change / renewal reminder / EOL / general) to this customer.
   "vendor_announcement",
+  // A compliance artifact (DPA / SOC 2 / insurance cert / …) with a recorded
+  // `expiresAt` is approaching its expiry. Raised once per artifact by the
+  // daily deadline-alert cron so a lapsing document doesn't slip silently.
+  "compliance_doc_expiring",
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,6 +328,11 @@ export const accountsTable = pgTable("account", {
   /** When true, renewal decisions require a separate admin/owner approval
    *  before the decision is treated as final by alerts, queues, and reports. */
   requireApprovals: boolean("require_approvals").notNull().default(false),
+  /** Kill-switch for the autonomous Renewal Agent. When true (default), the
+   *  agent proactively pre-preps renewals (brief + internal notice) as they
+   *  enter their notice window. Auto-prep is internal + reversible + audited;
+   *  this lets an operator turn the autonomy off per account. */
+  agentAutoPrep: boolean("agent_auto_prep").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -453,6 +502,24 @@ export const subscriptionsTable = pgTable(
     vendorId: uuid("vendor_id")
       .notNull()
       .references(() => vendorsTable.id, { onDelete: "restrict" }),
+    /**
+     * The obligation type. `vendor` generalizes to the "party / issuer" (an
+     * insurer, a government body, a certifying authority), so every category
+     * still has a counterparty row and every existing vendor join keeps working.
+     */
+    category: renewalItemCategoryEnum("category")
+      .notNull()
+      .default("saas_subscription"),
+    /**
+     * Type-specific long tail (policy number, jurisdiction, certifying body,
+     * license seat-pool, reference number) so insurance/license/cert specifics
+     * don't each need their own column. Mirrors the existing briefJson /
+     * notificationPrefs jsonb pattern.
+     */
+    attributesJson: jsonb("attributes_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     productName: text("product_name").notNull(),
     planName: text("plan_name"),
     billingCycle: billingCycleEnum("billing_cycle").notNull(),
@@ -865,7 +932,7 @@ export const aiExtractedFieldsTable = pgTable(
     rawValue: text("raw_value"),
     /** Typed value as JSON ({"date":"2026-12-31"}, {"days":30}, {"yes":true}, ...). */
     parsedValueJson: jsonb("parsed_value_json"),
-    /** 0..1 confidence. Always populated. */
+    /** 0..100 integer confidence (column confidence_pct). Always populated. */
     confidence: integer("confidence_pct").notNull(),
     /** Verbatim quote from the source document. REQUIRED by binding principle 4. */
     evidenceQuote: text("evidence_quote").notNull(),

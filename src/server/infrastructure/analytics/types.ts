@@ -35,6 +35,8 @@ export type AnalyticsEventName =
   | "document.uploaded"
   | "extracted_field.accepted"
   | "extracted_field.rejected"
+  | "extracted_field.auto_applied"
+  | "extracted_field.reverted"
   | "subscription.created"
   | "renewal_decision.logged"
   | "savings_record.created"

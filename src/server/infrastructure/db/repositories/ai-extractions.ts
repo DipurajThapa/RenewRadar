@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   aiExtractedFieldsTable,
@@ -71,6 +71,54 @@ export async function listPendingReviewFields(
       unitPriceCents: r.currentUnitPrice,
       totalCostPerPeriodCents: r.currentTotalCost,
     }),
+  }));
+}
+
+export type AutoAppliedField = AiExtractedField & {
+  documentFilename: string;
+  vendorName: string | null;
+  productName: string | null;
+};
+
+/**
+ * Fields the AI auto-applied without human review (reviewStatus "applied" with
+ * NO human reviewer). These are the rows behind the conservative auto-apply
+ * policy's one-click undo. Newest first.
+ */
+export async function listAutoAppliedFields(
+  accountId: string
+): Promise<AutoAppliedField[]> {
+  const rows = await db
+    .select({
+      field: aiExtractedFieldsTable,
+      documentFilename: documentsTable.filename,
+      vendorName: vendorsTable.name,
+      productName: subscriptionsTable.productName,
+    })
+    .from(aiExtractedFieldsTable)
+    .innerJoin(
+      documentsTable,
+      eq(aiExtractedFieldsTable.documentId, documentsTable.id)
+    )
+    .leftJoin(
+      subscriptionsTable,
+      eq(aiExtractedFieldsTable.subscriptionId, subscriptionsTable.id)
+    )
+    .leftJoin(vendorsTable, eq(subscriptionsTable.vendorId, vendorsTable.id))
+    .where(
+      and(
+        eq(aiExtractedFieldsTable.accountId, accountId),
+        eq(aiExtractedFieldsTable.reviewStatus, "applied"),
+        isNull(aiExtractedFieldsTable.reviewedByUserId)
+      )
+    )
+    .orderBy(desc(aiExtractedFieldsTable.appliedAt));
+
+  return rows.map((r) => ({
+    ...r.field,
+    documentFilename: r.documentFilename,
+    vendorName: r.vendorName,
+    productName: r.productName,
   }));
 }
 

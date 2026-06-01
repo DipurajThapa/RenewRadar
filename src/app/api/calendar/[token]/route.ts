@@ -8,6 +8,7 @@ import {
 } from "@server/infrastructure/db/schema";
 import { findAccountByIcsToken } from "@server/infrastructure/db/repositories/integrations";
 import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
+import { icsEvent } from "@server/domain/ics/builder";
 import {
   getRateLimit,
   ICS_FEED_POLICY,
@@ -135,38 +136,4 @@ export async function GET(
       "Cache-Control": "no-store, max-age=0",
     },
   });
-}
-
-function icsEvent(input: {
-  uid: string;
-  dtstamp: string;
-  dtstart: string; // YYYY-MM-DD
-  summary: string;
-  description: string;
-  alarms: { hoursBefore: number; description: string }[];
-}): string[] {
-  const out: string[] = [];
-  out.push("BEGIN:VEVENT");
-  out.push(`UID:${input.uid}`);
-  out.push(`DTSTAMP:${input.dtstamp.replace(/-/g, "")}T000000Z`);
-  out.push(`DTSTART;VALUE=DATE:${input.dtstart.replace(/-/g, "")}`);
-  out.push(`SUMMARY:${escapeIcsText(input.summary)}`);
-  out.push(`DESCRIPTION:${escapeIcsText(input.description)}`);
-  for (const alarm of input.alarms) {
-    out.push("BEGIN:VALARM");
-    out.push("ACTION:DISPLAY");
-    out.push(`DESCRIPTION:${escapeIcsText(alarm.description)}`);
-    out.push(`TRIGGER:-PT${alarm.hoursBefore}H`);
-    out.push("END:VALARM");
-  }
-  out.push("END:VEVENT");
-  return out;
-}
-
-function escapeIcsText(s: string): string {
-  return s
-    .replace(/\\/g, "\\\\")
-    .replace(/\n/g, "\\n")
-    .replace(/,/g, "\\,")
-    .replace(/;/g, "\\;");
 }
