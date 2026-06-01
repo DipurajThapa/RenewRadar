@@ -408,10 +408,13 @@ export class OllamaReasoningProvider implements ReasoningProvider {
           usage: usageMeta(usage),
         },
         question: input.question,
-        summary:
-          typeof raw.summary === "string"
-            ? raw.summary.slice(0, 200)
-            : fallback.summary,
+        // SAFETY (E): the summary is the first line the user reads and carries no
+        // per-claim evidence binding — an unconstrained model summary is ungrounded
+        // output a hijacked model could weaponize (e.g. "your contract was
+        // cancelled"). So we take the DETERMINISTIC summary, composed from the same
+        // grounded facts. The model's contribution is the validated answer claims,
+        // not the headline — mirroring how the brief forces headline = "".
+        summary: fallback.summary,
         answers,
         missingInfo: Array.isArray(raw.missingInfo)
           ? raw.missingInfo.map((m) => String(m)).filter((m) => m.length > 0)

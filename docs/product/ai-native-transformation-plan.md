@@ -266,6 +266,29 @@ Category E pushed toward A+, enforced by tests (not convention):
 Verified by `pnpm ai:review` after the changes (VERDICT PASS — no quality
 regression).
 
+### E hardened to A+ (revisit pass)
+
+The original E pass proved the defense was *present*; the A+ pass proves it
+*works*, behaviorally, offline (so it gates in CI without the live model):
+
+- **Ungrounded-output hole closed.** The Ask `summary` was unconstrained model
+  free-text — an ungrounded line the user reads first, weaponizable by a hijacked
+  model ("your contract was cancelled"). It is now the DETERMINISTIC summary; the
+  model contributes only validated, evidence-bound answer claims (mirroring how the
+  brief already forces `headline = ""`).
+- **Behavioral red-team suite** (`__tests__/red-team.test.ts`, offline). Drives the
+  real providers with a MOCK COMPROMISED model and proves the defense neutralizes
+  each attack class: a fabricated clause quote is dropped; an injected dollar figure
+  is ignored (prediction stays deterministic); an ungrounded "I emailed the vendor
+  and cancelled" claim is dropped; an injected summary + external deep-link
+  (`https://evil.com`) never survive; a fabricated extraction field with a
+  non-verbatim quote is dropped. This is the real "100% injection defense" gate —
+  no longer just a prompt-string presence check.
+- **Output-contract completeness.** E4 now also covers the narrative insight surface
+  (risk explainer / vendor intelligence / savings narrative) — every AI output type
+  carries provider + model + integer confidence — and asserts `meta.usage` is
+  well-formed when present (no negative billing).
+
 ## Phase 3 status — core DONE ✅ (AI on by default + load-bearing)
 
 Category A — the "is it an AI product?" flip:

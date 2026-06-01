@@ -118,6 +118,53 @@ describe("output-contract / provenance (E4)", () => {
       expect(f.confidencePct).toBeLessThanOrEqual(100);
     }
   });
+
+  it("a brief/answer meta.usage block, when present, is well-formed (no negative billing)", async () => {
+    const brief = await reasoner.buildBrief(sampleBriefInput());
+    if (brief.meta.usage) {
+      expect(Number.isInteger(brief.meta.usage.promptTokens)).toBe(true);
+      expect(brief.meta.usage.promptTokens).toBeGreaterThanOrEqual(0);
+      expect(brief.meta.usage.completionTokens).toBeGreaterThanOrEqual(0);
+      expect(brief.meta.usage.costUsdMicros).toBeGreaterThanOrEqual(0);
+    } else {
+      // Deterministic path is free — no usage is the correct contract.
+      expect(brief.meta.usage).toBeUndefined();
+    }
+  });
+
+  // EVERY AI output type — including the narrative insight surface (risk
+  // explainer / vendor intelligence / savings narrative) — must carry honest
+  // provenance: provider + model + an integer 0..100 confidence. These narrate
+  // over already-grounded structured data, so they carry meta provenance rather
+  // than per-claim evidence — but they may NEVER ship without provenance.
+  it("every insight-provider output carries provider + model + integer confidence", async () => {
+    const insight = new HeuristicStubProvider();
+    const outputs = [
+      await insight.explainRisk({
+        riskScore: 72, riskBand: "high",
+        components: { urgency: 30, value: 25, clausePressure: 17 },
+        daysUntilNoticeDeadline: 6, annualValueCents: 120_000, autoRenew: true,
+        isMissed: false, vendorName: "Acme", productName: "Pro",
+      }),
+      await insight.summarizeVendorIntelligence({
+        vendorName: "Acme", yearsTracked: 3, activeSubscriptions: 2, cancelledSubscriptions: 1,
+        totalSavedAnnualCents: 30_000, averagePriceChangePct: 7, lastDecisionLabel: "renewed",
+        lastDecisionDate: "2025-12-01", complianceArtifacts: 2, expiringComplianceArtifacts: 1,
+      }),
+      await insight.narrateSavings({
+        vendorName: "Acme", productName: "Pro", kind: "negotiation",
+        baselineAnnualUsdCents: 120_000, newAnnualUsdCents: 108_000, savedAnnualUsdCents: 12_000,
+        negotiationLever: "competing_quote", rationaleCodes: ["price_increase"],
+      }),
+    ];
+    for (const o of outputs) {
+      expect(o.meta.provider).toBeTruthy();
+      expect(o.meta.model).toBeTruthy();
+      expect(Number.isInteger(o.meta.confidencePct)).toBe(true);
+      expect(o.meta.confidencePct).toBeGreaterThanOrEqual(0);
+      expect(o.meta.confidencePct).toBeLessThanOrEqual(100);
+    }
+  });
 });
 
 // ─── E5 — agent boundary (no external side-effects) ──────────────────────────
