@@ -24,6 +24,11 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import { aiExtractedFieldsTable } from "@server/infrastructure/db/schema";
 import type { AiFieldKey } from "@server/infrastructure/db/schema";
+import {
+  fitCalibration,
+  type CalibrationMap,
+} from "@server/infrastructure/ai/eval/calibration";
+import type { ConfidencePoint } from "@server/infrastructure/ai/eval/types";
 
 export type ExtractionCorrection = {
   fieldId: string;
@@ -142,4 +147,48 @@ export async function getConfidenceCalibration(
       acceptRatePct: decided === 0 ? null : Math.round((accepted / decided) * 100),
     };
   });
+}
+
+// ─── D1 — calibration model (the moat: recalibrate confidence from corrections) ──
+
+/**
+ * Labeled (confidence, correct) points from real human review decisions:
+ * accepted-as-is = correct; human-edited or rejected = the AI value was wrong.
+ * AI auto-applied fields with no human reviewer are excluded (not a human label).
+ */
+export async function getCalibrationPoints(
+  accountId: string
+): Promise<ConfidencePoint[]> {
+  const rows = await db
+    .select({
+      confidence: aiExtractedFieldsTable.confidence,
+      reviewStatus: aiExtractedFieldsTable.reviewStatus,
+      editedValue: aiExtractedFieldsTable.reviewerEditedValueJson,
+    })
+    .from(aiExtractedFieldsTable)
+    .where(
+      and(
+        eq(aiExtractedFieldsTable.accountId, accountId),
+        isNotNull(aiExtractedFieldsTable.reviewedByUserId)
+      )
+    );
+  const points: ConfidencePoint[] = [];
+  for (const r of rows) {
+    if (r.reviewStatus === "applied") {
+      points.push({ confidencePct: r.confidence, correct: r.editedValue == null });
+    } else if (r.reviewStatus === "rejected") {
+      points.push({ confidencePct: r.confidence, correct: false });
+    }
+  }
+  return points;
+}
+
+/**
+ * Fit a per-account confidence calibration map from accumulated review decisions.
+ * This is the feedback loop CLOSING: corrections → honest confidence. The map is
+ * empty (identity) until usage accumulates, and sharpens monotonically with more
+ * corrections — proven in simulation by scripts/ai-eval/compounding.ts.
+ */
+export async function getCalibrationModel(accountId: string): Promise<CalibrationMap> {
+  return fitCalibration(await getCalibrationPoints(accountId));
 }

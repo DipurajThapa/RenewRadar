@@ -17,9 +17,12 @@ import {
   type SeedTwoAccountsResult,
 } from "@server/infrastructure/db/__tests__/test-harness";
 import {
+  getCalibrationModel,
+  getCalibrationPoints,
   getConfidenceCalibration,
   getExtractionCorrections,
 } from "@server/application/ai-feedback";
+import { applyCalibration } from "@server/infrastructure/ai/eval/calibration";
 
 let ids: SeedTwoAccountsResult;
 
@@ -166,5 +169,30 @@ describe("getConfidenceCalibration", () => {
     const low = cal.find((b) => b.bucket === "0-69")!;
     expect(low.decided).toBe(0);
     expect(low.acceptRatePct).toBeNull();
+  });
+});
+
+describe("getCalibrationModel (D1 — the moat loop closing)", () => {
+  it("derives a per-account calibration map from review decisions", async () => {
+    const a = ids.accountA;
+    // At confidence 95: 2 accepted (correct) + 2 rejected (wrong) → 50% accuracy.
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "notice_period_days", confidence: 95, terminal: "accepted" });
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "notice_period_days", confidence: 95, terminal: "accepted" });
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "auto_renewal", confidence: 95, terminal: "rejected" });
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "auto_renewal", confidence: 95, terminal: "rejected" });
+    // AI auto-applied (no reviewer) must be excluded.
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "renewal_date", confidence: 95, terminal: "ai_auto" });
+
+    const points = await getCalibrationPoints(a.id);
+    expect(points).toHaveLength(4);
+
+    const map = await getCalibrationModel(a.id);
+    // raw 95% confidence → calibrated to the observed 50% accuracy.
+    expect(applyCalibration(map, 95)).toBe(50);
+  });
+
+  it("is tenant-scoped", async () => {
+    await seedDecided({ accountId: ids.accountA.id, reviewerUserId: ids.accountA.userId, fieldKey: "notice_period_days", confidence: 90, terminal: "rejected" });
+    expect(await getCalibrationPoints(ids.accountB.id)).toHaveLength(0);
   });
 });

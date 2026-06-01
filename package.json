@@ -23,6 +23,7 @@
     "ai:leaderboard": "dotenv -e .env.local -- tsx scripts/ai-eval/leaderboard.ts",
     "ai:review": "dotenv -e .env.local -- tsx scripts/ai-eval/review.ts",
     "ai:load": "dotenv -e .env.local -- tsx scripts/ai-bench/load.ts",
+    "ai:compounding": "tsx scripts/ai-eval/compounding.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ci": "vitest run --reporter=verbose",
