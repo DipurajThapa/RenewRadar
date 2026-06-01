@@ -287,5 +287,24 @@ Category A — the "is it an AI product?" flip:
   router got 0/4 — the AI is not a removable veneer.
 
 Remaining Phase-3 follow-ons (larger, optional): light up the dormant vector
-retriever for semantic search; multi-document synthesis. Next major phase: Phase 4
-(production serving — B).
+retriever for semantic search; multi-document synthesis.
+
+## Phase 4 status — core DONE ✅ (production serving)
+
+Category B — serving is real, and testable without a prod tenant:
+
+- **B1 — served adapter (config swap).** `LocalLlmClient` speaks both Ollama's
+  `/api/chat` and the OpenAI-compatible `/v1/chat/completions` (`LLM_API_STYLE`,
+  `LLM_API_KEY`). Production = point at vLLM/TGI/hosted, no code change. Proven
+  live against Ollama's own `/v1`.
+- **B2 — load + latency harness** (`pnpm ai:load`): p50/p95/p99 + throughput vs a
+  latency SLO. Live: 6 briefs @ concurrency 3 → p95 41s (local queuing), 0 errors.
+- **B3 — response cache** (TTL+LRU, opt-in `LLM_CACHE_ENABLED`): identical model
+  calls served from cache (proven: 2nd identical call makes 0 model calls).
+- **B4 — circuit breaker**: after repeated failures the endpoint fast-fails so the
+  deterministic fallback fires immediately instead of waiting out every timeout;
+  half-open recovery after a cooldown (unit + integration tested).
+
+Remaining B follow-ons (small): token-streaming for the Ask panel (perceived
+latency) + per-call token/cost telemetry (overlaps Phase 6 F1). Next major phases:
+Phase 5 (moat machine — D) and Phase 6 (economics — F).

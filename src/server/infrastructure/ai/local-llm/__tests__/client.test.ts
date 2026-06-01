@@ -11,12 +11,14 @@ import {
   LocalLlmError,
   resolveLocalLlmConfig,
 } from "../client";
+import { _resetBreakersForTests } from "../breaker";
 
 const fetchMock = vi.fn();
 
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  _resetBreakersForTests();
 });
 afterEach(() => vi.unstubAllGlobals());
 
