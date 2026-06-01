@@ -18,6 +18,7 @@ import {
   resolveReasoningProvider,
 } from "@server/application/ai-budget";
 import { retrieveFacts } from "./retrieve";
+import { semanticRetrievalEnabled, semanticRetrieveFacts } from "./semantic-retrieve";
 
 export async function answerAccountQuestion(
   accountId: string,
@@ -28,12 +29,17 @@ export async function answerAccountQuestion(
   // this — it only matches fixed keywords.
   const intent = await getIntentRouter().classify(question);
 
-  // Prefer a configured vector retriever; otherwise the deterministic SQL
-  // dispatch (the shipped default).
+  // Retrieval priority:
+  //   1. a configured EXTERNAL vector store (RETRIEVER_PROVIDER), if any;
+  //   2. the in-app SEMANTIC retriever (default ON) — embeds + ranks a broad pool
+  //      of the account's real facts, handling paraphrased / off-menu questions;
+  //   3. the deterministic single-intent SQL dispatch (always-correct fallback).
   const vector = getRetriever();
   const facts = vector
     ? await vector.retrieve({ accountId, question, intent })
-    : await retrieveFacts(accountId, intent, question);
+    : semanticRetrievalEnabled()
+      ? await semanticRetrieveFacts(accountId, question, intent)
+      : await retrieveFacts(accountId, intent, question);
 
   // Pick the provider under the account's monthly reasoning budget (F3): within
   // budget → configured engine; over budget → deterministic (free).
