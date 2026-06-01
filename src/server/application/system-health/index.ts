@@ -30,6 +30,9 @@ import {
   type PlanTier,
 } from "@server/domain/billing/tier-definitions";
 import { getMonthlyPagesUsed } from "@server/infrastructure/db/repositories/ai-extractions";
+import { getMonthlyReasoningUsage } from "@server/infrastructure/db/repositories/ai-reasoning-usage";
+import { sharedMeter } from "@server/infrastructure/ai/local-llm/usage";
+import { getResponseCacheStats } from "@server/infrastructure/ai/local-llm/client";
 import { getRateLimit } from "@server/infrastructure/rate-limit";
 import {
   getExtractionProvider,
@@ -64,8 +67,31 @@ export type SystemHealth = {
     percentUsed: number | null;
   };
   integrations: IntegrationHealth[];
+  /** AI serving observability (Phase B/B6): token usage, cache, breaker, spend. */
+  serving: ServingHealth;
   /** Overall traffic-light verdict — what the badge at the top renders. */
   overall: "healthy" | "degraded" | "critical";
+};
+
+export type ServingHealth = {
+  /** Process-wide LLM usage since boot (in-memory meter). */
+  process: {
+    calls: number;
+    totalTokens: number;
+    costUsdMicros: number;
+    avgTokensPerCall: number;
+  };
+  /** Response-cache effectiveness (the cost lever). */
+  cache: { hits: number; misses: number; hitRatePct: number; size: number };
+  /** This account's reasoning spend this month vs its tier cap (F3). */
+  reasoning: {
+    callsThisMonth: number;
+    tokensThisMonth: number;
+    costThisMonthUsdMicros: number;
+    capUsdMicros: number;
+    capIsFinite: boolean;
+    percentUsed: number | null;
+  };
 };
 
 export type NotificationHealth = {
@@ -114,6 +140,7 @@ export async function getSystemHealth(
   const extractions = await getExtractionHealth(accountId);
   const integrations = await getIntegrationHealth(accountId);
   const aiBudget = await getAiBudget(accountId, accountPlanTier);
+  const serving = await getServingHealth(accountId, accountPlanTier);
   const documentsNeedingAttention = await countDocumentsNeedingAttention(
     accountId
   );
@@ -141,7 +168,45 @@ export async function getSystemHealth(
     },
     aiBudget,
     integrations,
+    serving,
     overall,
+  };
+}
+
+async function getServingHealth(
+  accountId: string,
+  planTier: PlanTier
+): Promise<ServingHealth> {
+  const meter = sharedMeter.stats();
+  const cache = getResponseCacheStats();
+  const usage = await getMonthlyReasoningUsage(accountId);
+  const capUsdMicros =
+    TIER_DEFINITIONS[planTier].limits.aiReasoningUsdMicrosPerMonth;
+  const capIsFinite = Number.isFinite(capUsdMicros);
+  return {
+    process: {
+      calls: meter.calls,
+      totalTokens: meter.totalTokens,
+      costUsdMicros: meter.costUsdMicros,
+      avgTokensPerCall: meter.avgTokens,
+    },
+    cache: {
+      hits: cache.hits,
+      misses: cache.misses,
+      hitRatePct: cache.hitRatePct,
+      size: cache.size,
+    },
+    reasoning: {
+      callsThisMonth: usage.calls,
+      tokensThisMonth: usage.promptTokens + usage.completionTokens,
+      costThisMonthUsdMicros: usage.costUsdMicros,
+      capUsdMicros,
+      capIsFinite,
+      percentUsed:
+        capIsFinite && capUsdMicros > 0
+          ? Math.round((usage.costUsdMicros / capUsdMicros) * 100)
+          : null,
+    },
   };
 }
 

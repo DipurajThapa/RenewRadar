@@ -62,6 +62,17 @@ describe("getSystemHealth providers", () => {
     expect(health.dbLatencyMs).toBeGreaterThanOrEqual(0);
     expect(health.dbLatencyMs).toBeLessThan(5_000);
   });
+
+  it("surfaces AI serving telemetry (B6): tokens, cache, reasoning spend + cap", async () => {
+    const health = await getSystemHealth(ids.accountA.id, "starter");
+    expect(health.serving.process.calls).toBeGreaterThanOrEqual(0);
+    expect(health.serving.cache.hitRatePct).toBeGreaterThanOrEqual(0);
+    expect(health.serving.cache.hitRatePct).toBeLessThanOrEqual(100);
+    // A fresh account has spent nothing, under a finite tier cap.
+    expect(health.serving.reasoning.costThisMonthUsdMicros).toBe(0);
+    expect(health.serving.reasoning.capIsFinite).toBe(true);
+    expect(health.serving.reasoning.capUsdMicros).toBeGreaterThan(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
