@@ -1,0 +1,38 @@
+{
+  "seed": 20260601,
+  "count": 8,
+  "rows": [
+    {
+      "model": "qwen3.6:latest",
+      "f1": 1,
+      "ece": 0,
+      "hallucinationEscapes": 0,
+      "injectionEscapes": 0,
+      "avgLatencyMs": 13488
+    },
+    {
+      "model": "qwen3.5:4b",
+      "f1": 0.9508196721311475,
+      "ece": 0,
+      "hallucinationEscapes": 0,
+      "injectionEscapes": 0,
+      "avgLatencyMs": 12873
+    },
+    {
+      "model": "qwen3.5:9b",
+      "f1": 0.9508196721311475,
+      "ece": 0.002,
+      "hallucinationEscapes": 0,
+      "injectionEscapes": 0,
+      "avgLatencyMs": 17546
+    },
+    {
+      "model": "llama3.1-storm:8b",
+      "f1": 0.5490196078431372,
+      "ece": 0.263,
+      "hallucinationEscapes": 0,
+      "injectionEscapes": 0,
+      "avgLatencyMs": 10777
+    }
+  ]
+}

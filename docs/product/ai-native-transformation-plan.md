@@ -213,3 +213,28 @@ Phases 1–2 are the unlock: once quality is measured and safety is hardened, tu
 re-runnable by an independent reviewer, gating CI. At that point the claim "this is a pure AI product"
 is **falsifiable and passing** — not a pitch. The only remaining gaps are the two we deliberately
 excluded: real customer data and a live production tenant.
+
+---
+
+## Phase 1 status — DONE ✅ (the eval spine)
+
+The measurement spine is built, A+, and re-runnable by anyone:
+
+- **`pnpm ai:benchmark`** — extraction on a held-out synthetic corpus (clean / OCR-noise /
+  multilingual / adversarial). Live (qwen3.6): **F1 99.2%**, ECE 0.005, **0 hallucination escapes**,
+  **0 injection escapes**. Corpus carries disambiguation distractors + injection decoys so the number
+  is a real signal (OCR-noise is the weak spot at 96.8% — a *safe* abstention, never a fabrication).
+- **`pnpm ai:benchmark:reasoning`** — brief quality scored by an INDEPENDENT model (llama3.1-storm)
+  + rule checks. Live: rule accuracy 100%, missed-deadline 100%, grounding 100%, 0 hallucination
+  escapes, **independent-judge pass 100%**. (The judge caught + drove a real coherence fix.)
+- **`pnpm ai:leaderboard`** — accuracy × latency across model tiers. Recommendation: **brief →
+  qwen3.6** (F1 100%); **Ask → qwen3.5:4b** (matches 9b accuracy, faster); llama is a poor extractor
+  (54.9%) but a fine judge.
+
+**CI gating:** the eval *logic* (corpus generator, F1/ECE scorer, judge rules — 18 unit tests) runs in
+`pnpm test` and gates every PR, so the harness can't silently rot. The *live* A+ benchmarks need a
+model server, so they run on a model-equipped runner / nightly via the `pnpm ai:*` commands above —
+the standard split for model-dependent evals.
+
+Reports are versioned under `docs/product/ai-eval/`. Next: Phase 2 (safety hardening) → Phase 3 (AI on
+by default), per the roadmap.
