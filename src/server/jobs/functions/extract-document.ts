@@ -12,6 +12,7 @@
  */
 import { inngest } from "@server/jobs/client";
 import { extractDocument } from "@server/application/documents/extract";
+import { autoApplyHighConfidenceFields } from "@server/application/documents/apply-field";
 
 export const extractDocumentJob = inngest.createFunction(
   {
@@ -32,6 +33,21 @@ export const extractDocumentJob = inngest.createFunction(
     const result = await step.run("run-extraction", () =>
       extractDocument({ accountId, documentId })
     );
+
+    // Conservative confidence-gated auto-apply — OFF unless explicitly enabled
+    // at deploy time. Only safe, high-confidence fields are written (and each is
+    // one-click reversible). Off by default keeps the advisor-not-agent posture:
+    // turning it on is a deliberate operational choice.
+    if (
+      result.status === "succeeded" &&
+      process.env.AI_AUTO_APPLY_ENABLED === "true"
+    ) {
+      const autoApply = await step.run("auto-apply-high-confidence", () =>
+        autoApplyHighConfidenceFields({ accountId, documentId })
+      );
+      return { ...result, autoApply };
+    }
+
     return result;
   }
 );

@@ -1,20 +1,55 @@
 import { ShieldCheck } from "lucide-react";
 import { getCurrentAccountAndUser } from "@server/middleware/current-user";
-import { listPendingReviewFields } from "@server/infrastructure/db/repositories/ai-extractions";
+import {
+  listAutoAppliedFields,
+  listPendingReviewFields,
+} from "@server/infrastructure/db/repositories/ai-extractions";
 import { listSubscriptions } from "@server/infrastructure/db/repositories/subscriptions";
 import { PageHeader } from "@ui/components/shared/page-header";
 import { EmptyState } from "@ui/components/shared/empty-state";
 import { ReviewFieldList } from "@ui/features/review-queue/review-field-list";
 import { UnlinkedDocumentsBanner } from "@ui/features/review-queue/unlinked-documents-banner";
+import {
+  AutoAppliedList,
+  type AutoAppliedItem,
+} from "@ui/features/review-queue/auto-applied-list";
 
 export const dynamic = "force-dynamic";
 
+/** Render an auto-applied field's value for the undo list. */
+function autoAppliedLabel(fieldKey: string, valueJson: unknown): string {
+  const v = (valueJson ?? {}) as Record<string, unknown>;
+  if (fieldKey === "notice_period_days" && typeof v.days === "number") {
+    return `${v.days} days`;
+  }
+  if (
+    (fieldKey === "renewal_date" || fieldKey === "expiry_date") &&
+    typeof v.date === "string"
+  ) {
+    return v.date;
+  }
+  if (fieldKey === "auto_renewal" && typeof v.yes === "boolean") {
+    return v.yes ? "on" : "off";
+  }
+  return "";
+}
+
 export default async function ReviewQueuePage() {
   const { account } = await getCurrentAccountAndUser();
-  const [fields, subscriptions] = await Promise.all([
+  const [fields, subscriptions, autoApplied] = await Promise.all([
     listPendingReviewFields(account.id),
     listSubscriptions(account.id),
+    listAutoAppliedFields(account.id),
   ]);
+
+  const autoAppliedItems: AutoAppliedItem[] = autoApplied.map((f) => ({
+    fieldId: f.id,
+    fieldKey: f.fieldKey,
+    label: autoAppliedLabel(f.fieldKey, f.parsedValueJson),
+    vendorProduct:
+      f.vendorName && f.productName ? `${f.vendorName} — ${f.productName}` : null,
+    confidencePct: f.confidence,
+  }));
 
   // Partition into linked (vendorName + productName present) vs unlinked.
   // Unlinked = the document was uploaded without a subscription pick, so
@@ -45,7 +80,10 @@ export default async function ReviewQueuePage() {
     label: `${s.vendorName} — ${s.productName}`,
   }));
 
-  const isEmpty = linked.length === 0 && unlinkedDocuments.length === 0;
+  const isEmpty =
+    linked.length === 0 &&
+    unlinkedDocuments.length === 0 &&
+    autoAppliedItems.length === 0;
 
   return (
     <div className="space-y-8 max-w-5xl">
@@ -73,6 +111,7 @@ export default async function ReviewQueuePage() {
             documents={unlinkedDocuments}
             subscriptions={subscriptionOptions}
           />
+          <AutoAppliedList items={autoAppliedItems} />
           {linked.length > 0 && <ReviewFieldList fields={linked} />}
         </>
       )}

@@ -20,14 +20,18 @@
  *   issuer                 → subscription.attributesJson.issuer (merge)
  *   reference_number       → subscription.attributesJson.referenceNumber (merge)
  */
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   aiExtractedFieldsTable,
+  auditLogTable,
   renewalEventsTable,
   subscriptionsTable,
 } from "@server/infrastructure/db/schema";
-import type { AiExtractedField } from "@server/infrastructure/db/schema";
+import type {
+  AiExtractedField,
+  AiFieldKey,
+} from "@server/infrastructure/db/schema";
 import { calculateNoticeDeadline } from "@server/domain/notice-deadline/calculate";
 import {
   AUDIT_ACTIONS,
@@ -49,8 +53,16 @@ export class ApplyFieldError extends Error {
  */
 export async function applyExtractedField(input: {
   accountId: string;
-  actorUserId: string;
+  /** Null only on the system auto-apply path (no human actor). */
+  actorUserId: string | null;
   fieldId: string;
+  /**
+   * System auto-apply (AI) path. Relaxes the human-reviewer guard — but the
+   * caller (`autoApplyHighConfidenceFields`) MUST enforce the conservative gate
+   * (confidence floor + safe-field allow-list) first. Off by default, so the
+   * human review path is byte-for-byte unchanged.
+   */
+  auto?: boolean;
 }): Promise<{ ok: true; appliedTo: string } | { ok: false; error: string }> {
   return db.transaction(async (tx) => {
     const [field] = await tx
@@ -72,17 +84,30 @@ export async function applyExtractedField(input: {
     if (field.appliedAt) {
       return { ok: true, appliedTo: "no-op (already applied)" };
     }
-    if (
-      field.reviewStatus !== "accepted" &&
-      field.reviewStatus !== "edited"
-    ) {
-      return {
-        ok: false,
-        error: `Field is ${field.reviewStatus}; only accepted/edited fields can be applied`,
-      };
-    }
-    if (!field.reviewedByUserId) {
-      return { ok: false, error: "Field has no reviewer recorded" };
+    if (input.auto) {
+      // System auto-apply: act ONLY on fresh, never-reviewed fields. The
+      // confidence floor + safe-field allow-list are enforced upstream by
+      // autoApplyHighConfidenceFields — this path is never reached for a field
+      // a human has already touched.
+      if (field.reviewStatus !== "pending") {
+        return {
+          ok: false,
+          error: `Auto-apply only acts on pending fields (was ${field.reviewStatus})`,
+        };
+      }
+    } else {
+      if (
+        field.reviewStatus !== "accepted" &&
+        field.reviewStatus !== "edited"
+      ) {
+        return {
+          ok: false,
+          error: `Field is ${field.reviewStatus}; only accepted/edited fields can be applied`,
+        };
+      }
+      if (!field.reviewedByUserId) {
+        return { ok: false, error: "Field has no reviewer recorded" };
+      }
     }
     if (!field.subscriptionId) {
       return {
@@ -281,13 +306,16 @@ export async function applyExtractedField(input: {
     await writeAuditLog(tx, {
       accountId: input.accountId,
       actorUserId: input.actorUserId,
-      action: AUDIT_ACTIONS.extractedFieldApplied,
+      action: input.auto
+        ? AUDIT_ACTIONS.extractedFieldAutoApplied
+        : AUDIT_ACTIONS.extractedFieldApplied,
       target: { entityType: appliedTo.split(" + ")[0]!, entityId: sub.id },
       before: beforeSnapshot,
       after: {
         ...afterSnapshot,
         appliedFromExtractedFieldId: field.id,
         appliedFromDocumentId: field.documentId,
+        ...(input.auto ? { autoAppliedByAI: true } : {}),
       },
     });
 
@@ -350,6 +378,20 @@ export async function applyExtractedField(input: {
           relatedEntityId: field.id,
         });
       }
+    }
+
+    // Activation/feedback signal: the AI wrote a field without review. Edits +
+    // rejects of these later become labeled corrections (see ai-feedback).
+    if (input.auto) {
+      void recordEvent({
+        event: "extracted_field.auto_applied",
+        context: { accountId: input.accountId, userId: null },
+        properties: {
+          fieldId: field.id,
+          fieldKey: field.fieldKey,
+          confidencePct: field.confidence,
+        },
+      });
     }
 
     return { ok: true as const, appliedTo };
@@ -454,5 +496,243 @@ export async function reviewExtractedField(input: {
     });
 
     return { ok: true as const, field: updated };
+  });
+}
+
+// ─── Confidence-gated AI auto-apply (Gate 2b — conservative) ─────────────────
+
+/** Minimum self-reported confidence for the AI to write a field without review. */
+export const AUTO_APPLY_MIN_CONFIDENCE = 90;
+
+/**
+ * The ONLY fields safe to auto-apply: simple, high-signal obligations whose
+ * write is trivially reversible (renewal/expiry date, notice period, auto-renew
+ * flag). Everything else — price, clause text, cancellation method, issuer,
+ * reference — always goes to the human review queue. `expiry_date` shares the
+ * exact write+revert path as `renewal_date` (its obligation-generic alias).
+ */
+export const AUTO_APPLY_SAFE_FIELDS: AiFieldKey[] = [
+  "renewal_date",
+  "expiry_date",
+  "notice_period_days",
+  "auto_renewal",
+];
+
+/**
+ * Apply only the pending fields that clear the conservative gate: in the safe
+ * set, at/above the confidence floor, and linked to a subscription. Reuses
+ * `applyExtractedField` (auto path) so the field→column map, audit trail, and
+ * vendor events are IDENTICAL to the human path — the differences are
+ * actorUserId=null and a distinct `extracted_field.auto_applied` audit action.
+ * Every auto-apply is reversible via `revertAutoAppliedField`. This NEVER
+ * touches an external system (advisor, not agent): it only writes the account's
+ * own records, audited and undoable.
+ */
+export async function autoApplyHighConfidenceFields(input: {
+  accountId: string;
+  documentId: string;
+}): Promise<{ autoApplied: number; skipped: number; fieldIds: string[] }> {
+  const candidates = await db
+    .select()
+    .from(aiExtractedFieldsTable)
+    .where(
+      and(
+        eq(aiExtractedFieldsTable.accountId, input.accountId),
+        eq(aiExtractedFieldsTable.documentId, input.documentId),
+        eq(aiExtractedFieldsTable.reviewStatus, "pending")
+      )
+    );
+
+  let autoApplied = 0;
+  let skipped = 0;
+  const fieldIds: string[] = [];
+  for (const field of candidates) {
+    const eligible =
+      !!field.subscriptionId &&
+      field.confidence >= AUTO_APPLY_MIN_CONFIDENCE &&
+      AUTO_APPLY_SAFE_FIELDS.includes(field.fieldKey);
+    if (!eligible) {
+      skipped++;
+      continue;
+    }
+    const res = await applyExtractedField({
+      accountId: input.accountId,
+      actorUserId: null,
+      fieldId: field.id,
+      auto: true,
+    });
+    if (res.ok) {
+      autoApplied++;
+      fieldIds.push(field.id);
+    } else {
+      skipped++;
+    }
+  }
+  return { autoApplied, skipped, fieldIds };
+}
+
+/**
+ * One-click undo for an AI auto-applied field. Restores the pre-apply value from
+ * the auto-apply audit snapshot, flips the field to "rejected" (a human said the
+ * AI got it wrong — a labeled correction for the Gate-4 feedback loop), clears
+ * appliedAt (so it can't be reverted twice), and audits the revert.
+ *
+ * Only AI auto-applied fields (appliedAt set, no human reviewer) are revertible
+ * here — human-applied fields are intentionally out of scope.
+ */
+export async function revertAutoAppliedField(input: {
+  accountId: string;
+  actorUserId: string;
+  fieldId: string;
+}): Promise<{ ok: true; revertedTo: string } | { ok: false; error: string }> {
+  return db.transaction(async (tx) => {
+    const [field] = await tx
+      .select()
+      .from(aiExtractedFieldsTable)
+      .where(
+        and(
+          eq(aiExtractedFieldsTable.id, input.fieldId),
+          eq(aiExtractedFieldsTable.accountId, input.accountId)
+        )
+      )
+      .limit(1);
+    if (!field) return { ok: false, error: "Field not found" };
+    if (!field.appliedAt || field.reviewedByUserId) {
+      return {
+        ok: false,
+        error: "Only AI auto-applied fields can be reverted here",
+      };
+    }
+    if (field.reviewStatus !== "applied") {
+      return { ok: false, error: `Field is ${field.reviewStatus}; not revertible` };
+    }
+    if (!field.subscriptionId) {
+      return { ok: false, error: "Field has no subscription" };
+    }
+
+    const [sub] = await tx
+      .select()
+      .from(subscriptionsTable)
+      .where(
+        and(
+          eq(subscriptionsTable.id, field.subscriptionId),
+          eq(subscriptionsTable.accountId, input.accountId)
+        )
+      )
+      .limit(1);
+    if (!sub) return { ok: false, error: "Subscription not found" };
+
+    // Recover the pre-apply value from the auto-apply audit entry's snapshot.
+    const [entry] = await tx
+      .select()
+      .from(auditLogTable)
+      .where(
+        and(
+          eq(auditLogTable.accountId, input.accountId),
+          eq(auditLogTable.action, AUDIT_ACTIONS.extractedFieldAutoApplied),
+          eq(auditLogTable.targetEntityId, sub.id),
+          sql`${auditLogTable.after}->>'appliedFromExtractedFieldId' = ${field.id}`
+        )
+      )
+      .orderBy(desc(auditLogTable.createdAt))
+      .limit(1);
+    const before = (entry?.before ?? null) as Record<string, unknown> | null;
+    if (!before) return { ok: false, error: "No revert snapshot found" };
+
+    // We restore the scalar columns + recompute noticeDeadline, but leave
+    // renewal_event.status for the daily notice-deadline cron to re-derive from
+    // the restored deadline — matching the existing updateSubscription convention
+    // (it never hand-rolls status either). Self-healing, so no stale alert.
+    let revertedTo = "subscription";
+    const restored: Record<string, unknown> = {};
+
+    switch (field.fieldKey) {
+      case "expiry_date":
+      case "renewal_date": {
+        const termEndDate = before.termEndDate as string | undefined;
+        if (!termEndDate) return { ok: false, error: "No prior term-end date" };
+        const noticeDeadline = calculateNoticeDeadline(
+          termEndDate,
+          sub.noticePeriodDays
+        )
+          .toISOString()
+          .split("T")[0]!;
+        await tx
+          .update(subscriptionsTable)
+          .set({ termEndDate })
+          .where(eq(subscriptionsTable.id, sub.id));
+        await tx
+          .update(renewalEventsTable)
+          .set({ renewalDate: termEndDate, noticeDeadline })
+          .where(eq(renewalEventsTable.subscriptionId, sub.id));
+        restored.termEndDate = termEndDate;
+        revertedTo = "subscription + renewal_event";
+        break;
+      }
+      case "notice_period_days": {
+        const days = before.noticePeriodDays as number | undefined;
+        if (typeof days !== "number")
+          return { ok: false, error: "No prior notice period" };
+        const noticeDeadline = calculateNoticeDeadline(sub.termEndDate, days)
+          .toISOString()
+          .split("T")[0]!;
+        await tx
+          .update(subscriptionsTable)
+          .set({ noticePeriodDays: days })
+          .where(eq(subscriptionsTable.id, sub.id));
+        await tx
+          .update(renewalEventsTable)
+          .set({ noticeDeadline })
+          .where(eq(renewalEventsTable.subscriptionId, sub.id));
+        restored.noticePeriodDays = days;
+        revertedTo = "subscription + renewal_event";
+        break;
+      }
+      case "auto_renewal": {
+        const autoRenew = before.autoRenew as boolean | undefined;
+        if (typeof autoRenew !== "boolean")
+          return { ok: false, error: "No prior auto-renew value" };
+        await tx
+          .update(subscriptionsTable)
+          .set({ autoRenew })
+          .where(eq(subscriptionsTable.id, sub.id));
+        restored.autoRenew = autoRenew;
+        break;
+      }
+      default:
+        return {
+          ok: false,
+          error: `Field ${field.fieldKey} is not auto-revertible`,
+        };
+    }
+
+    // Flip to "rejected" — a human overruled the AI. Clearing appliedAt blocks a
+    // double-revert; recording the reviewer makes it a labeled correction.
+    await tx
+      .update(aiExtractedFieldsTable)
+      .set({
+        reviewStatus: "rejected",
+        appliedAt: null,
+        reviewedByUserId: input.actorUserId,
+        reviewedAt: new Date(),
+      })
+      .where(eq(aiExtractedFieldsTable.id, field.id));
+
+    await writeAuditLog(tx, {
+      accountId: input.accountId,
+      actorUserId: input.actorUserId,
+      action: AUDIT_ACTIONS.extractedFieldReverted,
+      target: { entityType: revertedTo.split(" + ")[0]!, entityId: sub.id },
+      before: { autoAppliedValue: field.parsedValueJson },
+      after: { ...restored, revertedFromExtractedFieldId: field.id },
+    });
+
+    void recordEvent({
+      event: "extracted_field.reverted",
+      context: { accountId: input.accountId, userId: input.actorUserId },
+      properties: { fieldId: field.id, fieldKey: field.fieldKey },
+    });
+
+    return { ok: true as const, revertedTo };
   });
 }

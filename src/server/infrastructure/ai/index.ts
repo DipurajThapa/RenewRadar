@@ -21,19 +21,32 @@
 import type { AIInsightProvider, ExtractionProvider } from "./types";
 import { HeuristicStubProvider } from "./heuristic-stub-provider";
 import { AnthropicNotConfiguredProvider } from "./anthropic-not-configured";
+import { LocalLlmExtractionProvider } from "./local-llm/extraction-provider";
 import type { ReasoningProvider } from "./reasoning/types";
 import { DeterministicReasoningProvider } from "./reasoning/deterministic-provider";
 import { AnthropicReasoningProvider } from "./reasoning/anthropic-provider";
+import { OllamaReasoningProvider } from "./reasoning/ollama-provider";
 
-let cached: HeuristicStubProvider | AnthropicNotConfiguredProvider | null = null;
+let cached:
+  | HeuristicStubProvider
+  | AnthropicNotConfiguredProvider
+  | LocalLlmExtractionProvider
+  | null = null;
 let warnedFallback = false;
 let cachedReasoning: ReasoningProvider | null = null;
 
 function build():
   | HeuristicStubProvider
-  | AnthropicNotConfiguredProvider {
+  | AnthropicNotConfiguredProvider
+  | LocalLlmExtractionProvider {
   const provider = process.env.AI_EXTRACTION_PROVIDER ?? "heuristic-stub";
   switch (provider) {
+    case "ollama":
+    case "local":
+      // Local-LLM extraction (default qwen3.6 via Ollama). Always safe to
+      // construct: it self-falls-back to the heuristic engine per-call when the
+      // model server is unreachable or returns nothing it can quote verbatim.
+      return new LocalLlmExtractionProvider();
     case "anthropic": {
       // Anthropic mode is only safe to instantiate when the key is set —
       // otherwise the stub throws on every call. We fall back to the
@@ -83,7 +96,11 @@ export function getInsightProvider(): AIInsightProvider {
 }
 
 export function _resetExtractionProviderForTests(
-  provider?: HeuristicStubProvider | AnthropicNotConfiguredProvider | null
+  provider?:
+    | HeuristicStubProvider
+    | AnthropicNotConfiguredProvider
+    | LocalLlmExtractionProvider
+    | null
 ): void {
   cached = provider ?? null;
   warnedFallback = false;
@@ -91,10 +108,15 @@ export function _resetExtractionProviderForTests(
 
 /**
  * Renewal Intelligence Brief reasoner. Dedicated `AI_REASONING_PROVIDER` flag
- * (NOT the extraction flag) so flipping contract extraction to Anthropic
- * doesn't silently flip briefs too. Default = the genuinely-working offline
- * DeterministicReasoningProvider; the LLM is constructed only with both the
- * flag AND a key. The fallback NEVER mints a brief labeled "llm".
+ * (NOT the extraction flag) so flipping contract extraction doesn't silently
+ * flip briefs too. Options:
+ *   deterministic (default) — the genuinely-working offline engine.
+ *   ollama | local          — local LLM (default qwen3.6 via Ollama). No key;
+ *                             self-falls-back to deterministic per-call on any
+ *                             failure, so it's always safe to select.
+ *   anthropic               — hosted Claude; constructed only with flag AND key.
+ * No path EVER mints a brief labeled "llm" unless a grounded LLM claim survived
+ * the shared validator.
  */
 export function getReasoningProvider(): ReasoningProvider {
   if (cachedReasoning) return cachedReasoning;
@@ -106,6 +128,12 @@ export function getReasoningProvider(): ReasoningProvider {
     cachedReasoning = hasKey
       ? new AnthropicReasoningProvider()
       : new DeterministicReasoningProvider();
+  } else if (flag === "ollama" || flag === "local") {
+    // Local-LLM path (default qwen3.6 via Ollama). Always safe to construct:
+    // it self-falls-back to the deterministic engine per-call when the model
+    // server is unreachable, times out, or returns nothing grounded — so a
+    // missing/offline model degrades to deterministic instead of throwing.
+    cachedReasoning = new OllamaReasoningProvider();
   } else {
     cachedReasoning = new DeterministicReasoningProvider();
   }

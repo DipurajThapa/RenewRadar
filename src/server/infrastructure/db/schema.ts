@@ -932,7 +932,7 @@ export const aiExtractedFieldsTable = pgTable(
     rawValue: text("raw_value"),
     /** Typed value as JSON ({"date":"2026-12-31"}, {"days":30}, {"yes":true}, ...). */
     parsedValueJson: jsonb("parsed_value_json"),
-    /** 0..1 confidence. Always populated. */
+    /** 0..100 integer confidence (column confidence_pct). Always populated. */
     confidence: integer("confidence_pct").notNull(),
     /** Verbatim quote from the source document. REQUIRED by binding principle 4. */
     evidenceQuote: text("evidence_quote").notNull(),
