@@ -42,6 +42,8 @@ export const stripe = new Proxy({} as Stripe, {
   get(_, prop) {
     const inner = getStripe() as unknown as Record<string | symbol, unknown>;
     const value = inner[prop];
-    return typeof value === "function" ? (value as Function).bind(inner) : value;
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(inner)
+      : value;
   },
 });
