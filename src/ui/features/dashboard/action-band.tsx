@@ -27,6 +27,7 @@ export function ActionBand({
         icon={<AlertTriangle className="h-5 w-5" />}
         count={counts.noticeDeadlinesActionWindow}
         label="notice deadlines in the action window"
+        singularLabel="notice deadline in the action window"
         href="/notice-deadlines"
         cta="Open calendar"
         tone={counts.noticeDeadlinesActionWindow > 0 ? "urgent" : "ok"}
@@ -35,6 +36,7 @@ export function ActionBand({
         icon={<Clock className="h-5 w-5" />}
         count={counts.renewalsAwaitingDecision}
         label="renewals awaiting your decision"
+        singularLabel="renewal awaiting your decision"
         href="/renewals"
         cta="Decide now"
         tone={counts.renewalsAwaitingDecision > 0 ? "moderate" : "ok"}
@@ -45,6 +47,7 @@ export function ActionBand({
         icon={<ShieldAlert className="h-5 w-5" />}
         count={highRiskCount}
         label="renewals at high risk"
+        singularLabel="renewal at high risk"
         href="/action-queue"
         cta="Review risk"
         tone={highRiskCount > 0 ? "urgent" : "ok"}
@@ -78,6 +81,7 @@ function ActionCard({
   icon,
   count,
   label,
+  singularLabel,
   href,
   cta,
   tone,
@@ -85,12 +89,18 @@ function ActionCard({
 }: {
   icon: React.ReactNode;
   count: number;
+  /** Plural label (e.g. "renewals awaiting your decision"). */
   label: string;
+  /** Optional singular form, used when count === 1. Falls back to `label`
+   *  (so the only callers that need to set this are ones whose plural form
+   *  would read wrong as singular: "1 renewals at high risk"). */
+  singularLabel?: string;
   href: string;
   cta: string;
   tone: ActionTone;
   disabled?: boolean;
 }) {
+  const displayLabel = count === 1 ? (singularLabel ?? label) : label;
   return (
     <Card className={cn("border p-5 flex flex-col gap-4", toneCard[tone])}>
       <div className="flex items-start gap-3">
@@ -118,7 +128,7 @@ function ActionCard({
                 {count}
               </div>
               <div className="text-xs text-foreground/70 mt-1.5 leading-snug">
-                {label}
+                {displayLabel}
               </div>
             </div>
           )}

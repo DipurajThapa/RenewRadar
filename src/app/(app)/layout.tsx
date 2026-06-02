@@ -45,6 +45,17 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-secondary/30">
+      {/*
+       * Skip-to-content — visually hidden until focused. Keyboard / SR users
+       * land on this first and can jump past the sidebar's many nav links
+       * instead of tabbing through them on every page. WCAG 2.1 §2.4.1.
+       */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground focus:shadow"
+      >
+        Skip to main content
+      </a>
       {isDemoMode && <DemoBanner />}
       <div className="flex flex-1 min-h-0">
         <SideNav
@@ -66,7 +77,7 @@ export default async function AppLayout({
            * readable; pages can opt in to fluid widths by overriding the
            * inner container.
            */}
-          <main className="flex-1 overflow-x-hidden">
+          <main id="main-content" className="flex-1 overflow-x-hidden">
             <div className="max-w-[1400px] mx-auto px-4 sm:px-6 md:px-10 py-6 sm:py-8 md:py-10 animate-fade-in">
               {children}
             </div>

@@ -5,6 +5,7 @@ import { getCurrentAccountAndUser } from "@server/middleware/current-user";
 import { getSubscriptionDetail } from "@server/infrastructure/db/repositories/subscriptions";
 import { listAccountUsers } from "@server/infrastructure/db/repositories/users";
 import { SubscriptionForm } from "@ui/features/subscriptions/subscription-form";
+import { isUuid } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,9 @@ export default async function EditSubscriptionPage({
 }: {
   params: { id: string };
 }) {
+  if (!isUuid(params.id)) {
+    notFound();
+  }
   const { account, user } = await getCurrentAccountAndUser();
   const [detail, users] = await Promise.all([
     getSubscriptionDetail(account.id, params.id),

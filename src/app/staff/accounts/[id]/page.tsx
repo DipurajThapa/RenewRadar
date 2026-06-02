@@ -15,6 +15,7 @@ import {
 } from "@app/staff/actions";
 import { getActiveSupportSession } from "@server/application/support-sessions";
 import { StaffCsvImportPanel } from "@ui/features/staff/staff-csv-import-panel";
+import { isUuid } from "@shared/utils";
 
 /**
  * Per-account staff view.
@@ -36,6 +37,7 @@ export default async function StaffAccountDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: accountId } = await params;
+  if (!isUuid(accountId)) notFound();
   const staff = await requireCurrentStaff();
 
   const [account] = await db

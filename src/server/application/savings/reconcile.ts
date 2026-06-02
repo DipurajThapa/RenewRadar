@@ -41,7 +41,12 @@ export class SavingsReconcileError extends Error {
   }
 }
 
-export type ReconcileSavingsResult = { status: ReconciliationStatus };
+export type ReconcileSavingsResult = {
+  status: ReconciliationStatus;
+  /** Optional clarifier — set when status='not_observed' for a known reason
+   *  (e.g. the observed charge is in a non-USD currency we can't realize). */
+  reason?: "non_usd_charge";
+};
 
 export async function reconcileSavingsRecord(input: {
   accountId: string;
@@ -77,12 +82,28 @@ export async function reconcileSavingsRecord(input: {
   // A post-renewal charge exists if a confirmed USD charge's most recent
   // observation is on/after the decision date (record.createdAt).
   const boundary = record.createdAt.toISOString().slice(0, 10);
-  const observed =
-    charge != null && charge.currency === "USD" && charge.lastChargedOn >= boundary;
+  const hasDatedCharge = charge != null && charge.lastChargedOn >= boundary;
+  const observed = hasDatedCharge && charge!.currency === "USD";
 
   if (!observed) {
-    // Leave pending (no write) — the renewed price hasn't shown up yet; the
-    // cron will retry on its next pass.
+    // Two ways to land here:
+    //  (a) no post-renewal charge has shown up yet  → leave pending, retry.
+    //  (b) a charge exists but its currency isn't USD → savings_record stores
+    //      USD-typed cents, so we can't realize this without FX conversion.
+    //      Record it as `not_observed` with a clear note instead of silently
+    //      retrying forever; the user sees "awaiting reconciliation —
+    //      non-USD charge" instead of an indefinite "pending."
+    if (hasDatedCharge && charge!.currency !== "USD") {
+      await db
+        .update(savingsRecordsTable)
+        .set({
+          reconciliationStatus: "not_observed",
+          reconciledAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(savingsRecordsTable.id, input.savingsRecordId));
+      return { status: "not_observed", reason: "non_usd_charge" } as const;
+    }
     return { status: "not_observed" };
   }
 

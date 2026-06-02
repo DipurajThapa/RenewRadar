@@ -180,6 +180,98 @@ describe("validateBrief — honesty enforcement", () => {
   });
 });
 
+describe("validateBrief — LLM grounding (input-aware)", () => {
+  const baseInput: RenewalBriefInput = {
+    accountId: "a",
+    subscriptionId: "s",
+    vendorName: "Datadog",
+    productName: "Pro Plan",
+    billingCycle: "annual",
+    annualValueCents: 90000,
+    autoRenew: true,
+    noticePeriodDays: 30,
+    termEndDate: "2026-07-03",
+    daysUntilNoticeDeadline: 10,
+    noticeDeadlineMissed: false,
+    hasPriceIncreaseClause: false,
+    priceIncreaseClauseText: null,
+    chargeHistory: [],
+    benchmark: null, // NO benchmark provided
+    priorDecisions: [],
+  };
+
+  it("drops an LLM claim that cites a benchmark when no benchmark was provided", () => {
+    const brief: RenewalIntelligenceBrief = {
+      meta: { provider: "ollama", model: "m", promptVersion: "v", confidencePct: 97, engine: "llm", briefVersion: "b" },
+      headline: "",
+      recommendedAction: "renewed",
+      claims: [
+        {
+          key: "benchmark_position",
+          statement: "You are massively overpaying versus peers.",
+          engine: "llm",
+          confidencePct: 97,
+          evidence: [
+            {
+              source: "benchmark",
+              detail: "Across 9,999 peer accounts Acme costs 300% above median.",
+              quote: null,
+              refId: null,
+            },
+          ],
+        },
+      ],
+      predictedNextAnnualCents: null,
+    };
+    const out = validateBrief(brief, { clauseText: null, input: baseInput });
+    expect(out.claims).toHaveLength(0); // fabricated benchmark → dropped
+  });
+
+  it("drops an LLM claim that invents a dollar figure absent from the inputs", () => {
+    const brief: RenewalIntelligenceBrief = {
+      meta: { provider: "ollama", model: "m", promptVersion: "v", confidencePct: 90, engine: "llm", briefVersion: "b" },
+      headline: "",
+      recommendedAction: "renewed",
+      claims: [
+        {
+          key: "renewal_risk",
+          statement: "Renewing exposes you to a $48,000 auto-renew.",
+          engine: "llm",
+          confidencePct: 90,
+          evidence: [
+            { source: "auto_renew_flag", detail: "Auto-renew is on; the contract is $48,000/yr.", quote: null, refId: null },
+          ],
+        },
+      ],
+      predictedNextAnnualCents: null,
+    };
+    const out = validateBrief(brief, { clauseText: null, input: baseInput });
+    expect(out.claims).toHaveLength(0); // $48,000 isn't grounded (real value $900) → dropped
+  });
+
+  it("keeps an LLM claim whose receipt uses only grounded figures + an existing source", () => {
+    const brief: RenewalIntelligenceBrief = {
+      meta: { provider: "ollama", model: "m", promptVersion: "v", confidencePct: 80, engine: "llm", briefVersion: "b" },
+      headline: "",
+      recommendedAction: "renewed",
+      claims: [
+        {
+          key: "renewal_risk",
+          statement: "Auto-renew is on, so quiet inaction means a $900 roll-over.",
+          engine: "llm",
+          confidencePct: 80,
+          evidence: [
+            { source: "auto_renew_flag", detail: "Auto-renew is on; annual value is $900.", quote: null, refId: null },
+          ],
+        },
+      ],
+      predictedNextAnnualCents: null,
+    };
+    const out = validateBrief(brief, { clauseText: null, input: baseInput });
+    expect(out.claims).toHaveLength(1); // $900 == annualValueCents/100, source exists → kept
+  });
+});
+
 describe("getReasoningProvider provenance", () => {
   it("defaults to the LOCAL-LLM reasoner (AI-first) when no flag is set", () => {
     const prev = process.env.AI_REASONING_PROVIDER;

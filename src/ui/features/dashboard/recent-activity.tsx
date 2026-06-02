@@ -24,9 +24,11 @@ export function RecentActivity({ entries }: { entries: ActivityEntry[] }) {
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const description = describeAction(entry.action);
   const href = entityHref(entry);
-  const initials = (entry.actorName ?? entry.actorEmail ?? "??")
-    .slice(0, 2)
-    .toUpperCase();
+  // Initials fallback. The display name uses "System" when actor is null
+  // (system-actor cron) — match it here ("SY") instead of rendering literal
+  // "??", which looked like a broken render. For a real name we take its first
+  // letter + the first letter of its second token if any (e.g. "Demo User" → "DU").
+  const initials = deriveInitials(entry.actorName, entry.actorEmail);
 
   const content = (
     <div className="flex items-center gap-3 py-2 px-2 -mx-2 hover:bg-muted/30 rounded-md transition-colors">
@@ -54,6 +56,19 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   ) : (
     <div>{content}</div>
   );
+}
+
+function deriveInitials(
+  actorName: string | null | undefined,
+  actorEmail: string | null | undefined
+): string {
+  const source = (actorName ?? actorEmail ?? "").trim();
+  if (!source) return "SY"; // null actor == system-actor cron
+  const tokens = source.split(/[\s@._-]+/).filter(Boolean);
+  if (tokens.length === 0) return "SY";
+  const first = tokens[0]![0]!;
+  const second = tokens[1]?.[0] ?? tokens[0]![1] ?? "";
+  return (first + second).toUpperCase();
 }
 
 function describeAction(action: string): string {

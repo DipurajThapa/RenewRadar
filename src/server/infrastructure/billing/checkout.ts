@@ -104,8 +104,15 @@ export async function createCheckoutSession(input: {
 
     return { ok: true, url: session.url };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown error";
-    console.error("[checkout] failed:", msg);
-    return { ok: false, error: msg };
+    // Don't leak raw Stripe SDK messages to the customer-facing plan card —
+    // those expose API key prefixes and internal field names. Log the real
+    // detail server-side, return a friendly, generic string.
+    const internal = err instanceof Error ? err.message : String(err);
+    console.error("[checkout] failed:", internal);
+    return {
+      ok: false,
+      error:
+        "We couldn't start checkout. Please try again in a moment — if it keeps failing, contact support.",
+    };
   }
 }

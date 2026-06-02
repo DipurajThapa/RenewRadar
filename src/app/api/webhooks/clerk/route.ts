@@ -30,7 +30,20 @@ export async function POST(req: Request) {
   }
 
   const payload = await req.text();
-  const wh = new Webhook(webhookSecret);
+
+  // `new Webhook(secret)` eagerly base64-decodes the secret and THROWS on a
+  // malformed value. Constructed outside try/catch it turned a misconfigured
+  // secret into an uncaught 500 (empty body) on every delivery — and a forged
+  // request into a 500 instead of a clean 401. Construct it under guard:
+  // a bad secret is a server misconfig (500, labeled), a bad signature is a
+  // rejected request (401).
+  let wh: Webhook;
+  try {
+    wh = new Webhook(webhookSecret);
+  } catch (err) {
+    log.error("clerk_webhook_secret_invalid", err);
+    return new Response("Server misconfigured", { status: 500 });
+  }
 
   let event: WebhookEvent;
   try {

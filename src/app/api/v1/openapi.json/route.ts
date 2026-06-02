@@ -135,13 +135,22 @@ const spec = {
     "/subscriptions": {
       get: {
         operationId: "listSubscriptions",
-        summary: "List active subscriptions for the authenticated account.",
+        summary:
+          "List subscriptions for the authenticated account. Defaults to active; pass ?status=all or a comma-separated list to include others.",
         parameters: [
           {
             name: "limit",
             in: "query",
             required: false,
             schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+          },
+          {
+            name: "status",
+            in: "query",
+            required: false,
+            description:
+              "Filter by subscription status. Omit for default (active only); set 'all' to include every status; pass a comma-separated subset (e.g. 'active,draft').",
+            schema: { type: "string", default: "active" },
           },
         ],
         responses: {

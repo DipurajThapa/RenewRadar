@@ -132,4 +132,30 @@ describe("parseSubscriptionCsv", () => {
       expect(r.notes).toBe("newline\nin notes");
     }
   });
+
+  it("rejects an impossible calendar date (2026-02-30) at parse time", () => {
+    const csv = [
+      "vendor,product,plan,billing_cycle,term_start,term_end,notice_period_days,seats,unit_price_usd,auto_renew",
+      "Acme,Widget,Std,annual,2026-02-30,2027-02-28,30,5,50,true",
+    ].join("\n");
+    const result = parseSubscriptionCsv(csv);
+    expect(result.rows[0]?.ok).toBe(false);
+    if (!result.rows[0]?.ok) {
+      expect(result.rows[0]?.errors.some((e) => /real calendar date/.test(e))).toBe(
+        true
+      );
+    }
+  });
+
+  it("rejects an empty / whitespace-only unit_price_usd", () => {
+    const csv = [
+      "vendor,product,plan,billing_cycle,term_start,term_end,notice_period_days,seats,unit_price_usd,auto_renew",
+      "Acme,Widget,Std,annual,2026-01-01,2026-12-31,30,5,   ,true",
+    ].join("\n");
+    const result = parseSubscriptionCsv(csv);
+    expect(result.rows[0]?.ok).toBe(false);
+    if (!result.rows[0]?.ok) {
+      expect(result.rows[0]?.errors.some((e) => /required/.test(e))).toBe(true);
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
@@ -92,6 +92,12 @@ export async function listActionQueueRows(
       and(
         eq(renewalEventsTable.accountId, accountId),
         eq(subscriptionsTable.status, "active"),
+        // Never surface an already-decided renewal. A row whose decision is
+        // set (renewed/cancelled/…; status flips to 'processed') has been
+        // handled — keeping it would rank a closed renewal as "needs you" and
+        // dead-end its "Decide now" CTA. This also drives the dashboard's
+        // account-risk count (getAccountRiskSummary reuses these rows).
+        isNull(renewalEventsTable.decision),
         // Either we're in a "needs attention" state OR the notice deadline
         // is within 60 days (giving the risk scorer a chance to elevate).
         or(

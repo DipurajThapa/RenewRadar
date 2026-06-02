@@ -134,9 +134,11 @@ export function RenewalBriefCard({
           </div>
 
           <p className="text-[11px] text-muted-foreground border-t pt-2">
-            Advisor, never agent — Renewal Radar can draft your internal notice,
-            but a human always contacts the vendor. Provenance is labeled per
-            claim; nothing here is fabricated without evidence.
+            AI-generated synthesis from your own data. Not legal or financial
+            advice — verify before acting. Advisor, never agent: Renewal Radar
+            can draft your internal notice, but a human always contacts the
+            vendor. Provenance is labeled per claim; nothing here is fabricated
+            without evidence.
           </p>
         </>
       )}

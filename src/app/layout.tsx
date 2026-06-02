@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { isDemoMode } from "@server/middleware/demo-mode";
 import {
   OrganizationJsonLd,
   WebsiteJsonLd,
@@ -109,25 +110,29 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <ClerkProvider>
-      <html
-        lang="en"
-        suppressHydrationWarning
-        className={`${interSans.variable} ${interDisplay.variable}`}
-      >
-        <body className="font-sans">
-          {children}
-          {/*
-           * Site-wide structured data: Organization + WebSite. These are the
-           * EEAT primitives that show up on every page — author/publisher
-           * identification, language, contact pathways. Page-specific schemas
-           * (FAQ, Article, HowTo, Breadcrumb) are emitted by individual pages.
-           */}
-          <OrganizationJsonLd />
-          <WebsiteJsonLd />
-        </body>
-      </html>
-    </ClerkProvider>
+  // In demo mode auth is fully bypassed (see middleware/demo-mode) — mounting
+  // ClerkProvider with the placeholder publishable key triggers a stream of
+  // failed clerk.example.com network requests on every page, polluting the
+  // console and wasting bandwidth. Skip the provider entirely; the demo build
+  // never calls a Clerk client hook.
+  const tree = (
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${interSans.variable} ${interDisplay.variable}`}
+    >
+      <body className="font-sans">
+        {children}
+        {/*
+         * Site-wide structured data: Organization + WebSite. These are the
+         * EEAT primitives that show up on every page — author/publisher
+         * identification, language, contact pathways. Page-specific schemas
+         * (FAQ, Article, HowTo, Breadcrumb) are emitted by individual pages.
+         */}
+        <OrganizationJsonLd />
+        <WebsiteJsonLd />
+      </body>
+    </html>
   );
+  return isDemoMode ? tree : <ClerkProvider>{tree}</ClerkProvider>;
 }

@@ -65,8 +65,13 @@ export async function GET() {
 
 function escape(v: string): string {
   if (v === "") return "";
-  if (/[",\r\n]/.test(v)) {
-    return `"${v.replace(/"/g, '""')}"`;
+  // Neutralize spreadsheet formula injection before RFC-4180 quoting.
+  let safe = v;
+  if (/^[=+\-@\t\r]/.test(safe)) {
+    safe = "'" + safe;
   }
-  return v;
+  if (/[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
+  }
+  return safe;
 }

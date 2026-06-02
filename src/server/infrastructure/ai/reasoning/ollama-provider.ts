@@ -327,6 +327,7 @@ export class OllamaReasoningProvider implements ReasoningProvider {
 
       const validated = validateBrief(candidate, {
         clauseText: input.priceIncreaseClauseText,
+        input,
       });
 
       // If the validator stripped every claim, the LLM contributed nothing

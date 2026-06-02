@@ -60,36 +60,47 @@ export async function listAgentPreppedItems(
   accountId: string,
   limit = 6
 ): Promise<AgentPreppedItem[]> {
-  const rows = await db
-    .select({
-      subscriptionId: renewalBriefsTable.subscriptionId,
-      vendorName: vendorsTable.name,
-      productName: subscriptionsTable.productName,
-      recommendedAction: renewalBriefsTable.recommendedAction,
-      confidencePct: renewalBriefsTable.confidence,
-      noticeDeadline: renewalEventsTable.noticeDeadline,
-      preppedAt: renewalBriefsTable.createdAt,
-    })
-    .from(renewalBriefsTable)
-    .innerJoin(
-      renewalEventsTable,
-      eq(renewalEventsTable.id, renewalBriefsTable.renewalEventId)
-    )
-    .innerJoin(
-      subscriptionsTable,
-      eq(subscriptionsTable.id, renewalBriefsTable.subscriptionId)
-    )
-    .innerJoin(vendorsTable, eq(vendorsTable.id, subscriptionsTable.vendorId))
-    .where(
-      and(
-        eq(renewalBriefsTable.accountId, accountId),
-        isNull(renewalBriefsTable.createdByUserId),
-        inArray(renewalEventsTable.status, ["notice_window", "action_needed"])
-      )
-    )
-    .orderBy(asc(renewalEventsTable.noticeDeadline))
-    .limit(limit);
-  return rows;
+  // A subscription can have many briefs (re-prep, regeneration). The
+  // "Prepared for you" rollup is ONE row per subscription, showing the most
+  // recent agent-prepped brief — anything else is a duplicate (and produced a
+  // React duplicate-key warning + double rows in the UI).
+  const rows = await db.execute<{
+    subscription_id: string;
+    vendor_name: string;
+    product_name: string;
+    recommended_action: AgentPreppedItem["recommendedAction"];
+    confidence_pct: number;
+    notice_deadline: string;
+    prepped_at: Date;
+  }>(sql`
+    select distinct on (b.subscription_id)
+      b.subscription_id  as subscription_id,
+      v.name             as vendor_name,
+      s.product_name     as product_name,
+      b.recommended_action as recommended_action,
+      b.confidence_pct   as confidence_pct,
+      re.notice_deadline as notice_deadline,
+      b.created_at       as prepped_at
+    from renewal_brief b
+    inner join renewal_event re on re.id = b.renewal_event_id
+    inner join subscription s   on s.id = b.subscription_id
+    inner join vendor v         on v.id = s.vendor_id
+    where b.account_id = ${accountId}
+      and b.created_by_user_id is null
+      and re.status in ('notice_window', 'action_needed')
+    order by b.subscription_id, b.created_at desc
+    limit ${limit}
+  `);
+  // Drizzle's `db.execute` returns RowList; map to our typed shape.
+  return rows.map((r) => ({
+    subscriptionId: r.subscription_id,
+    vendorName: r.vendor_name,
+    productName: r.product_name,
+    recommendedAction: r.recommended_action,
+    confidencePct: r.confidence_pct,
+    noticeDeadline: r.notice_deadline,
+    preppedAt: r.prepped_at,
+  }));
 }
 
 export type RenewalRange = 30 | 90 | 180 | 365;

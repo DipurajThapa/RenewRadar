@@ -54,6 +54,17 @@ describe("detectRecurringCharges — fixture", () => {
     expect(dd!.confidence).toBeLessThan(notion!.confidence);
   });
 
+  it("does NOT report a phantom price-drift for Datadog's wobbly flat charges", () => {
+    // The pre-fix endpoint comparison reported +8% drift on Datadog from pure
+    // ±8% usage noise — a phantom price-increase alert on a flat subscription.
+    // The trend-based comparison (first-third median vs last-third median)
+    // neutralizes wobble; any residual drift must stay well within the noise
+    // floor of a clearly-flat series.
+    const dd = byMerchant("DATADOG INC");
+    expect(dd).toBeTruthy();
+    expect(Math.abs(dd!.amountDriftPct)).toBeLessThan(3);
+  });
+
   it("detects Zoom as quarterly", () => {
     const zoom = byMerchant("ZOOM VIDEO COMM");
     expect(zoom).toBeTruthy();

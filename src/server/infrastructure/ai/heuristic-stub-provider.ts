@@ -156,13 +156,7 @@ export class HeuristicStubProvider
         provider: PROVIDER_NAME,
         model: MODEL,
         promptVersion: PROMPT_VERSION,
-        confidencePct: input.isMissed
-          ? 95
-          : input.riskBand === "high"
-            ? 88
-            : input.riskBand === "medium"
-              ? 72
-              : 60,
+        confidencePct: deriveRiskConfidence(input),
       },
       headline,
       rationale,
@@ -298,6 +292,35 @@ export class HeuristicStubProvider
 }
 
 // ─── shared formatting helpers ──────────────────────────────────────────────
+
+/**
+ * Confidence for the risk insight, DERIVED from the real signal rather than a
+ * flat per-band constant (which read as a fake calibrated probability). It
+ * tracks (a) how decisive the deterministic risk score is and (b) how complete
+ * the backing signals are — more signal → more confidence. Rounded to the
+ * nearest 5 so it never implies false precision.
+ */
+function deriveRiskConfidence(input: RiskExplainerInput): number {
+  // A closed notice window is an observed fact, not a judgment call.
+  if (input.isMissed) return 95;
+
+  // Signal completeness: each real signal that's actually present raises how
+  // confident we are the call is well-supported.
+  const present = [
+    input.components.urgency > 0,
+    input.components.value > 0,
+    input.autoRenew,
+    input.components.clausePressure > 0,
+  ].filter(Boolean).length;
+  const completeness = present / 4; // 0..1
+
+  // Confidence rises with the real risk score and with signal completeness —
+  // a clearly-low-risk row is a low-confidence "needs attention" call, a
+  // well-supported high-risk row a high-confidence one. Rounded to the nearest
+  // 5 so it never implies false calibration.
+  const pct = 50 + (input.riskScore / 100) * 30 + completeness * 12;
+  return Math.max(50, Math.min(92, Math.round(pct / 5) * 5));
+}
 
 function formatDollars(dollars: number): string {
   if (dollars >= 1_000_000) {

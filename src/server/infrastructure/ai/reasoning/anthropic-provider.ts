@@ -114,6 +114,7 @@ export class AnthropicReasoningProvider implements ReasoningProvider {
       };
       return validateBrief(restamped, {
         clauseText: input.priceIncreaseClauseText,
+        input,
       });
     } catch {
       return new DeterministicReasoningProvider().buildBrief(input);

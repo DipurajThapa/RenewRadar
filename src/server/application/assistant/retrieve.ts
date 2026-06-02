@@ -204,7 +204,7 @@ export async function retrieveFacts(
       return [
         fact(
           "kpis",
-          `Tracking ${k.trackedSubscriptions} subscription(s), ${formatCurrency(k.totalAnnualSpendCents)}/yr total; ${k.noticeDeadlinesNext30Count} notice deadline(s) in the next 30 days; saved ${formatCurrency(k.savedYtdAnnualUsdCents)}/yr YTD.`,
+          `Tracking ${k.trackedSubscriptions} subscription(s), ${formatCurrency(k.totalAnnualSpendCents)}/yr total; ${k.noticeDeadlinesNext30Count} notice deadline(s) in the next 30 days; proven savings ${formatCurrency(k.provenSavedYtdAnnualUsdCents)}/yr YTD (${formatCurrency(k.savedYtdAnnualUsdCents)} projected).`,
           "/dashboard"
         ),
       ];

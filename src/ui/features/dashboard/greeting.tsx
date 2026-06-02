@@ -14,19 +14,20 @@ import { formatCurrency, pluralize } from "@shared/utils";
  *   3. Subtle date + activity line  (smaller, muted)
  *   4. Quick CTA: open action queue
  *
- * When `savedYtdAnnualUsdCents > 0`, we render a "Saved YTD" pill next to
- * the greeting. ROI gets the headline real estate.
+ * When `provenSavedYtdAnnualUsdCents > 0`, we render a "Saved YTD" pill next to
+ * the greeting — PROVEN (reconciled) savings only, so the headline pill never
+ * advertises an unreconciled projection as money saved.
  */
 export function DashboardGreeting({
   firstName,
   noticeNext30,
   renewalsAwaiting,
-  savedYtdAnnualUsdCents,
+  provenSavedYtdAnnualUsdCents,
 }: {
   firstName: string;
   noticeNext30: number;
   renewalsAwaiting: number;
-  savedYtdAnnualUsdCents: number;
+  provenSavedYtdAnnualUsdCents: number;
 }) {
   const hour = new Date().getHours();
   const greeting =
@@ -46,7 +47,7 @@ export function DashboardGreeting({
             <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
               {greeting}, {firstName}.
             </h1>
-            {savedYtdAnnualUsdCents > 0 && (
+            {provenSavedYtdAnnualUsdCents > 0 && (
               <Badge
                 variant="success-soft"
                 className="text-[12px] px-3 py-1 gap-2 font-semibold"
@@ -55,7 +56,7 @@ export function DashboardGreeting({
                 <span>
                   Saved YTD{" "}
                   <span className="tabular-nums font-bold">
-                    {formatCurrency(savedYtdAnnualUsdCents)}
+                    {formatCurrency(provenSavedYtdAnnualUsdCents)}
                   </span>
                 </span>
               </Badge>

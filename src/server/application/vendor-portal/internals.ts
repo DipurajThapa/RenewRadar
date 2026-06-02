@@ -85,9 +85,11 @@ export function slugFromDomain(domain: string): string {
 }
 
 /**
- * Display name from a domain: "acme.com" → "Acme". Takes the second-level
- * label and Title-cases it. Vendors edit this during onboarding (Slice 2);
- * the default just needs to be recognizable.
+ * Display name from a domain: "acme.com" → "Acme", "globex-corp.com" →
+ * "Globex Corp", "blue_sky.io" → "Blue Sky". Takes the first label, splits on
+ * hyphen/underscore/dot, Title-cases each token, and joins with a space so
+ * vendors don't open the portal greeted by "Globex-corp". Vendors edit this
+ * during onboarding (Slice 2); the default just needs to read cleanly.
  */
 export function displayNameFromDomain(domain: string): string {
   const parts = domain.split(".");
@@ -95,7 +97,11 @@ export function displayNameFromDomain(domain: string): string {
   // first label is correct in both cases.
   const label = parts[0] ?? domain;
   if (!label) return domain;
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  const tokens = label.split(/[-_]+/).filter(Boolean);
+  if (tokens.length === 0) return domain;
+  return tokens
+    .map((t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase())
+    .join(" ");
 }
 
 /** 32 random bytes → 64 hex chars. Cryptographically secure. */
