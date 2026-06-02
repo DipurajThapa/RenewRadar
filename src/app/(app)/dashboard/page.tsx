@@ -92,7 +92,7 @@ export default async function DashboardPage() {
         firstName={user.fullName?.split(" ")[0] ?? "there"}
         noticeNext30={kpis.noticeDeadlinesNext30Count}
         renewalsAwaiting={actions.renewalsAwaitingDecision}
-        savedYtdAnnualUsdCents={kpis.savedYtdAnnualUsdCents}
+        provenSavedYtdAnnualUsdCents={kpis.provenSavedYtdAnnualUsdCents}
       />
 
       {/* Above-the-fold answer to "how am I doing?" */}

@@ -17,7 +17,14 @@ const HEADERS = [
   "kind",
   "baseline_annual_usd",
   "new_annual_usd",
-  "saved_annual_usd",
+  "saved_annual_usd_projected",
+  // Reconciliation (proven) columns — what actually happened vs. what the
+  // decision projected. Omitting these made an exported "savings" report show
+  // only projections, never the proven figure.
+  "realized_new_annual_usd",
+  "saved_annual_usd_realized",
+  "reconciliation_status",
+  "reconciled_date",
   "locked",
   "note",
 ] as const;
@@ -48,6 +55,14 @@ export async function GET() {
         formatCurrencyCsv(r.baselineAnnualUsdCents),
         formatCurrencyCsv(r.newAnnualUsdCents),
         formatCurrencyCsv(r.savedAnnualUsdCents),
+        r.realizedNewAnnualUsdCents != null
+          ? formatCurrencyCsv(r.realizedNewAnnualUsdCents)
+          : "",
+        r.realizedSavedAnnualUsdCents != null
+          ? formatCurrencyCsv(r.realizedSavedAnnualUsdCents)
+          : "",
+        r.reconciliationStatus ?? "pending",
+        r.reconciledAt ? r.reconciledAt.toISOString().split("T")[0]! : "",
         r.isLocked ? "true" : "false",
         escape(r.note ?? ""),
       ].join(",")
@@ -71,8 +86,14 @@ export async function GET() {
 
 function escape(v: string): string {
   if (v === "") return "";
-  if (/[",\r\n]/.test(v)) {
-    return `"${v.replace(/"/g, '""')}"`;
+  // Neutralize spreadsheet formula injection ( =, +, -, @, tab, CR ) before
+  // RFC-4180 quoting — user-controlled vendor names / notes flow through here.
+  let safe = v;
+  if (/^[=+\-@\t\r]/.test(safe)) {
+    safe = "'" + safe;
   }
-  return v;
+  if (/[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
+  }
+  return safe;
 }

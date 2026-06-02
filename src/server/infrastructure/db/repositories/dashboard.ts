@@ -35,34 +35,42 @@ function addDaysToString(date: string, days: number): string {
   return d.toISOString().split("T")[0]!;
 }
 
-// Annualized cents — used in several SQL expressions
-function annualValueCentsSql() {
-  return sql<number>`
+// Annualized cents — the single CASE both helpers below share.
+//   monthly ×12, quarterly ×4, annual ×1.
+//   multi_year: amortized over the actual term length (cost × 365 / term-days,
+//     floored at a 1-year term) — treating a 3-year prepay as one year's spend
+//     overstated annualized spend & "value at stake".
+//   one_time: $0 — a one-off / perpetual purchase is not recurring annual spend.
+function annualValueCase() {
+  return sql`
     case
       when ${subscriptionsTable.billingCycle} = 'monthly'
         then ${subscriptionsTable.totalCostPerPeriodCents} * 12
       when ${subscriptionsTable.billingCycle} = 'quarterly'
         then ${subscriptionsTable.totalCostPerPeriodCents} * 4
+      when ${subscriptionsTable.billingCycle} = 'annual'
+        then ${subscriptionsTable.totalCostPerPeriodCents}
+      when ${subscriptionsTable.billingCycle} = 'multi_year'
+        then round(
+          ${subscriptionsTable.totalCostPerPeriodCents} * 365.0
+          / greatest(
+              (${subscriptionsTable.termEndDate} - ${subscriptionsTable.termStartDate}),
+              365
+            )
+        )
+      when ${subscriptionsTable.billingCycle} = 'one_time'
+        then 0
       else ${subscriptionsTable.totalCostPerPeriodCents}
     end
   `;
 }
 
+function annualValueCentsSql() {
+  return sql<number>`${annualValueCase()}::int`;
+}
+
 function annualValueSumSql() {
-  return sql<number>`
-    coalesce(
-      sum(
-        case
-          when ${subscriptionsTable.billingCycle} = 'monthly'
-            then ${subscriptionsTable.totalCostPerPeriodCents} * 12
-          when ${subscriptionsTable.billingCycle} = 'quarterly'
-            then ${subscriptionsTable.totalCostPerPeriodCents} * 4
-          else ${subscriptionsTable.totalCostPerPeriodCents}
-        end
-      ),
-      0
-    )::int
-  `;
+  return sql<number>`coalesce(sum(${annualValueCase()}), 0)::int`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,12 +151,19 @@ export type DashboardKpis = {
   noticeDeadlinesNext30ValueCents: number;
   totalAnnualSpendCents: number;
   /**
-   * Total saved this calendar year. Sum of `savedAnnualUsdCents` across every
-   * savings record created in the current year. Includes both auto-generated
-   * rows (from logged decisions) and user-entered rows (renegotiated /
-   * avoided_increase).
+   * PROJECTED saved this calendar year. Sum of `savedAnnualUsdCents` (what each
+   * decision *aimed* to save) across savings records created this year. This is
+   * an estimate, NOT money confirmed against actual post-renewal spend — never
+   * present it on its own as "saved"; pair it with `provenSavedYtdAnnualUsdCents`.
    */
   savedYtdAnnualUsdCents: number;
+  /**
+   * PROVEN saved this calendar year. Sum of `realizedSavedAnnualUsdCents` across
+   * savings records that the reconciliation cron has matched against actual
+   * post-renewal spend (`reconciledAt` set). This is the honest "you really
+   * saved this" number; it is ≤ projected until reconciliation catches up.
+   */
+  provenSavedYtdAnnualUsdCents: number;
   /**
    * Total saved across all time for this account. Used in the digest email
    * to show cumulative value created.
@@ -175,6 +190,7 @@ export async function getDashboardKpis(
     deadlines,
     totalSpend,
     savedYtd,
+    provenSavedYtd,
     savedAllTime,
   ] = await Promise.all([
     db
@@ -216,6 +232,16 @@ export async function getDashboardKpis(
           eq(renewalEventsTable.accountId, accountId),
           eq(subscriptionsTable.status, "active"),
           eq(subscriptionsTable.autoRenew, true),
+          // Only OPEN, undecided deadlines are "at stake". An already-decided
+          // event (status='processed' / decision set) must not inflate the
+          // count or the $-at-stake total — it has been handled. Mirrors the
+          // open-status filter used by the spotlight + action band.
+          inArray(renewalEventsTable.status, [
+            "upcoming",
+            "notice_window",
+            "action_needed",
+          ]),
+          isNull(renewalEventsTable.decision),
           gte(renewalEventsTable.noticeDeadline, today),
           lte(renewalEventsTable.noticeDeadline, in30)
         )
@@ -231,9 +257,8 @@ export async function getDashboardKpis(
         )
       ),
 
-    // Saved YTD — sum every savings_record this account created since Jan 1
-    // of the current year. Locked rows count just the same as unlocked: the
-    // user signaled the saving is real either way.
+    // PROJECTED saved YTD — sum every savings_record's `savedAnnualUsdCents`
+    // (what the decision aimed to save) created since Jan 1 this year.
     db
       .select({
         savedCents: sql<number>`coalesce(sum(${savingsRecordsTable.savedAnnualUsdCents}), 0)::bigint`,
@@ -243,6 +268,22 @@ export async function getDashboardKpis(
         and(
           eq(savingsRecordsTable.accountId, accountId),
           gte(savingsRecordsTable.createdAt, startOfYear)
+        )
+      ),
+
+    // PROVEN saved YTD — sum only `realizedSavedAnnualUsdCents` for rows the
+    // reconciliation cron has matched against actual post-renewal spend
+    // (`reconciledAt` set). This is the honest "really saved" figure.
+    db
+      .select({
+        savedCents: sql<number>`coalesce(sum(${savingsRecordsTable.realizedSavedAnnualUsdCents}), 0)::bigint`,
+      })
+      .from(savingsRecordsTable)
+      .where(
+        and(
+          eq(savingsRecordsTable.accountId, accountId),
+          gte(savingsRecordsTable.createdAt, startOfYear),
+          sql`${savingsRecordsTable.reconciledAt} is not null`
         )
       ),
 
@@ -267,6 +308,7 @@ export async function getDashboardKpis(
     // through Number() because individual savings rows fit comfortably; if
     // a single account ever crosses ~$90T in savings we'll revisit.
     savedYtdAnnualUsdCents: Number(savedYtd[0]?.savedCents ?? 0),
+    provenSavedYtdAnnualUsdCents: Number(provenSavedYtd[0]?.savedCents ?? 0),
     savedAllTimeAnnualUsdCents: Number(savedAllTime[0]?.savedCents ?? 0),
   };
 }

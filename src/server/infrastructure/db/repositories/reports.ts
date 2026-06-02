@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@server/infrastructure/db/client";
 import {
   renewalEventsTable,
@@ -8,33 +8,39 @@ import {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function annualValueSumSql() {
-  return sql<number>`
-    coalesce(
-      sum(
-        case
-          when ${subscriptionsTable.billingCycle} = 'monthly'
-            then ${subscriptionsTable.totalCostPerPeriodCents} * 12
-          when ${subscriptionsTable.billingCycle} = 'quarterly'
-            then ${subscriptionsTable.totalCostPerPeriodCents} * 4
-          else ${subscriptionsTable.totalCostPerPeriodCents}
-        end
-      ),
-      0
-    )::int
-  `;
-}
-
-function annualValueCentsSql() {
-  return sql<number>`
+// Shared annualization CASE — monthly ×12, quarterly ×4, annual ×1,
+// multi_year amortized over its term, one_time excluded ($0, non-recurring).
+// Mirrors the dashboard repo so every annualized figure agrees.
+function annualValueCase() {
+  return sql`
     case
       when ${subscriptionsTable.billingCycle} = 'monthly'
         then ${subscriptionsTable.totalCostPerPeriodCents} * 12
       when ${subscriptionsTable.billingCycle} = 'quarterly'
         then ${subscriptionsTable.totalCostPerPeriodCents} * 4
+      when ${subscriptionsTable.billingCycle} = 'annual'
+        then ${subscriptionsTable.totalCostPerPeriodCents}
+      when ${subscriptionsTable.billingCycle} = 'multi_year'
+        then round(
+          ${subscriptionsTable.totalCostPerPeriodCents} * 365.0
+          / greatest(
+              (${subscriptionsTable.termEndDate} - ${subscriptionsTable.termStartDate}),
+              365
+            )
+        )
+      when ${subscriptionsTable.billingCycle} = 'one_time'
+        then 0
       else ${subscriptionsTable.totalCostPerPeriodCents}
     end
   `;
+}
+
+function annualValueSumSql() {
+  return sql<number>`coalesce(sum(${annualValueCase()}), 0)::int`;
+}
+
+function annualValueCentsSql() {
+  return sql<number>`${annualValueCase()}::int`;
 }
 
 // ─── exposure ───────────────────────────────────────────────────────────────
@@ -50,6 +56,9 @@ export type ExposureBucket = {
  *
  * Buckets are limited to "live" (active subscription) rows. Cancelled and
  * expired subscriptions are intentionally excluded — they're past exposure.
+ * Already-decided renewal events (decision set / status='processed') are also
+ * excluded: exposure is forward-looking $ still at risk, and a handled renewal
+ * is no longer exposure.
  */
 export async function getExposureByStatus(
   accountId: string
@@ -68,7 +77,8 @@ export async function getExposureByStatus(
     .where(
       and(
         eq(renewalEventsTable.accountId, accountId),
-        inArray(subscriptionsTable.status, ["active", "pending_cancellation"])
+        inArray(subscriptionsTable.status, ["active", "pending_cancellation"]),
+        isNull(renewalEventsTable.decision)
       )
     )
     .groupBy(renewalEventsTable.status);
@@ -117,6 +127,8 @@ export async function listExposureDetail(
       and(
         eq(renewalEventsTable.accountId, accountId),
         eq(subscriptionsTable.status, "active"),
+        // Forward-looking exposure only — exclude already-decided renewals.
+        isNull(renewalEventsTable.decision),
         gte(renewalEventsTable.renewalDate, today),
         lte(renewalEventsTable.renewalDate, cutoff)
       )

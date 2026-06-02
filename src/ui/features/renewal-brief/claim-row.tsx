@@ -2,6 +2,26 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { PROVENANCE_LABEL_TEXT } from "@server/domain/provenance/labels";
+
+// Inline duplicate of `claimProvenance` so this client component doesn't drag a
+// "@server/..." import (and its DB transitive types) into the bundle. Same
+// thresholds, asserted-identical by the upstream test.
+function provenanceForClaim(c: {
+  confidencePct: number;
+  evidence: ReadonlyArray<unknown>;
+}): "verified" | "inferred" | "uncertain" {
+  if (c.evidence.length === 0) return "uncertain";
+  if (c.confidencePct >= 85) return "verified";
+  if (c.confidencePct >= 65) return "inferred";
+  return "uncertain";
+}
+
+const PROVENANCE_TONE: Record<"verified" | "inferred" | "uncertain", string> = {
+  verified: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  inferred: "bg-amber-50 text-amber-700 border-amber-200",
+  uncertain: "bg-slate-100 text-slate-600 border-slate-200",
+};
 
 /**
  * A collapsible evidence row — the shared display for both a brief `BriefClaim`
@@ -33,6 +53,10 @@ export type ClaimLike = {
 export function ClaimRow({ claim }: { claim: ClaimLike }) {
   const [open, setOpen] = useState(false);
   const label = claim.key ? (CLAIM_LABEL[claim.key] ?? claim.key) : "Finding";
+  // Trust band — the user-facing answer to "can I tell verified from inferred
+  // from uncertain?" The band is computed for every claim; previously only the
+  // review queue surfaced it. Now the brief card does too.
+  const band = provenanceForClaim(claim);
   return (
     <div className="rounded-md border bg-white">
       <button
@@ -43,6 +67,12 @@ export function ClaimRow({ claim }: { claim: ClaimLike }) {
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
             {label}
+            <span
+              className={`inline-flex items-center rounded-full border px-1.5 py-px text-[10px] font-medium normal-case ${PROVENANCE_TONE[band]}`}
+              title="Trust band — verified (≥85% + evidence), inferred (≥65%), or uncertain"
+            >
+              {PROVENANCE_LABEL_TEXT[band]}
+            </span>
             <span className="text-indigo-600">
               {claim.engine === "llm" ? "Claude" : "deterministic"}
             </span>

@@ -118,7 +118,39 @@ export async function findMatchingSubscription(
       return r.sub;
     }
   }
+  // Key 3 — token-prefix reconciliation. Card feeds carry the legal entity
+  // ("Notion Labs", "Slack Technologies") while the tracked vendor is the brand
+  // ("Notion", "Slack"). normalizeVendorName doesn't strip "Labs"/"Technologies"
+  // so keys 1–2 miss, and the confirm flow used to create a DUPLICATE draft of a
+  // vendor you already track. Match when one normalized name's tokens are a
+  // leading sublist of the other's ("notion" ⊑ "notion labs"). Token-level (not
+  // substring) so "data" never matches "datadog". Only act on an UNAMBIGUOUS
+  // single candidate — if several existing vendors prefix-match, fall through to
+  // draft creation rather than guess.
+  const chargeTokens = tokenize(charge.normalizedMerchant);
+  if (chargeTokens.length > 0) {
+    const candidates = rows.filter((r) =>
+      tokenPrefixMatch(tokenize(normalizeVendorName(r.vendorName)), chargeTokens)
+    );
+    const distinctVendorIds = new Set(candidates.map((r) => r.sub.vendorId));
+    if (candidates.length > 0 && distinctVendorIds.size === 1) {
+      return candidates[0]!.sub;
+    }
+  }
   return null;
+}
+
+function tokenize(normalized: string): string[] {
+  return normalized.split(" ").filter(Boolean);
+}
+
+/** True when one token list is a leading sublist of the other (order-sensitive,
+ *  token-level): ["notion"] vs ["notion","labs"] → match; ["data"] vs
+ *  ["datadog"] → no match. */
+function tokenPrefixMatch(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return shorter.every((t, i) => t === longer[i]);
 }
 
 export type ReconcileResult = {

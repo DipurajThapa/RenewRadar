@@ -38,6 +38,16 @@ import { normalizeVendorName } from "./normalize";
  */
 export const MIN_BENCHMARK_SAMPLE = 3;
 
+/**
+ * Higher floor for disclosing a MEDIAN of a per-account quantity (annual value,
+ * savings). At N=3 the median IS the middle account's exact value — a privacy
+ * leak even though the cohort cleared MIN_BENCHMARK_SAMPLE. At N≥5 the median
+ * lies in the middle bucket of the sample and cannot be tied to one account.
+ * Mode-style stats (typical notice period, top levers) are immune — they're
+ * majority frequencies, not per-account values.
+ */
+export const MIN_MEDIAN_DISCLOSURE_SAMPLE = 5;
+
 export type VendorBenchmark = {
   /** Normalized key the benchmark was computed against. Display the user's
    *  original vendor name; this is for diagnostics only. */
@@ -161,7 +171,12 @@ export async function getVendorBenchmark(
     mode(noticeFreq) ?? null;
   const autoRenewRatePct =
     Math.round((autoRenewYes / subRows.length) * 1000) / 10;
-  const medianAnnualValueCents = median(annualValues);
+  // Medians of per-account quantities are only disclosed once the cohort is
+  // large enough that the middle value isn't traceable to one account.
+  const medianAnnualValueCents =
+    sampleAccounts >= MIN_MEDIAN_DISCLOSURE_SAMPLE
+      ? median(annualValues)
+      : null;
 
   // Rationale + lever frequencies from decision_contexts joined to renewal
   // events scoped by vendor. Cross-account by design.
@@ -221,9 +236,12 @@ export async function getVendorBenchmark(
         sql`${savingsRecordsTable.savedAnnualUsdCents} > 0`
       )
     );
-  const medianSavingsAnnualCents = median(
-    savingsRows.map((r) => r.savedAnnualUsdCents)
-  );
+  // Same per-account median floor as `medianAnnualValueCents` above — at small
+  // N the middle saving is one customer's actual realized number.
+  const medianSavingsAnnualCents =
+    sampleAccounts >= MIN_MEDIAN_DISCLOSURE_SAMPLE
+      ? median(savingsRows.map((r) => r.savedAnnualUsdCents))
+      : null;
 
   return {
     normalizedName: normalized,

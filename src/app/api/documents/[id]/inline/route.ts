@@ -21,6 +21,7 @@ import { db } from "@server/infrastructure/db/client";
 import { documentsTable } from "@server/infrastructure/db/schema";
 import { getDocumentStorage } from "@server/infrastructure/storage";
 import { createLogger } from "@server/infrastructure/observability/logger";
+import { isUuid } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,6 +32,9 @@ export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
 ): Promise<NextResponse> {
+  if (!isUuid(params.id)) {
+    return new NextResponse("Not found", { status: 404 });
+  }
   const { account } = await getCurrentAccountAndUser();
 
   const [doc] = await db
@@ -66,7 +70,12 @@ export async function GET(
       headers: {
         "Content-Type": "application/pdf",
         // INLINE — not attachment. The browser opens in-tab.
-        "Content-Disposition": `inline; filename="${doc.filename}"`,
+        // The user-controlled stored filename is sanitized + RFC 5987-encoded.
+        // Bare interpolation let a filename with a `"` or CR/LF break the
+        // header and a non-ASCII filename mojibake; this strips CR/LF and
+        // quotes, ASCII-fallbacks for the legacy `filename=`, and emits the
+        // full encoded name in `filename*` per RFC 6266.
+        "Content-Disposition": buildInlineDisposition(doc.filename),
         "Cache-Control": "private, max-age=300",
         "X-Content-Type-Options": "nosniff",
       },
@@ -78,4 +87,18 @@ export async function GET(
     });
     return new NextResponse("Failed to read document", { status: 500 });
   }
+}
+
+/**
+ * Safe Content-Disposition for a user-controlled filename. Strips control
+ * chars (CR/LF would let an attacker inject another header), removes the
+ * double-quote that would break the legacy `filename="…"` token, ASCII-folds
+ * the legacy token, and emits `filename*` per RFC 5987 with the full UTF-8
+ * name so modern browsers still get it right.
+ */
+function buildInlineDisposition(rawFilename: string): string {
+  const stripped = rawFilename.replace(/[\r\n\x00-\x1f"\\]/g, "_") || "document";
+  // Legacy ASCII fallback — drop non-ASCII so an old browser can't choke.
+  const ascii = stripped.replace(/[^\x20-\x7e]/g, "_") || "document";
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(stripped)}`;
 }

@@ -236,11 +236,18 @@ function classifyCluster(
 
     const typical = median(amountsByDate);
     const latest = last.amountCents;
+    // Drift as a TREND (first-third median vs last-third median), not a raw
+    // endpoint comparison. Endpoint comparison reported phantom drift on flat
+    // subscriptions whose amounts wobbled with usage noise — e.g. Datadog at
+    // $7,000 ± 8% returned +8% "price increase" from pure noise. A trend over
+    // smoothed thirds neutralizes wobble while still catching a real step
+    // (Slack's $150 → $172 mid-stream step still reads ≈ +15%).
+    const k = Math.max(1, Math.floor(byDate.length / 3));
+    const firstThirdMed = median(amountsByDate.slice(0, k));
+    const lastThirdMed = median(amountsByDate.slice(-k));
     const driftPct =
-      first.amountCents > 0
-        ? Math.round(
-            ((latest - first.amountCents) / first.amountCents) * 100
-          )
+      firstThirdMed > 0
+        ? Math.round(((lastThirdMed - firstThirdMed) / firstThirdMed) * 100)
         : 0;
 
     // Wobble penalty only when the amounts oscillate (≥2 direction changes);

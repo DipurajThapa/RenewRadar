@@ -12,21 +12,33 @@ import type { DashboardKpis } from "@server/infrastructure/db/repositories/dashb
  *   3. Annualized spend   — answers "how much is at stake?"
  *   4. Notice deadlines   — answers "what needs attention?"
  *
- * Stat #1 uses the `success` tone so the eye lands on ROI first; the rest
- * are neutral so the page doesn't feel like a Christmas tree.
+ * Stat #1 leads with PROVEN savings (reconciled against actual post-renewal
+ * spend) and uses the `success` tone only when there's a proven figure — an
+ * unreconciled projection is never dressed up as money already saved. The
+ * rest are neutral so the page doesn't feel like a Christmas tree.
  */
 export function KpiStrip({ kpis }: { kpis: DashboardKpis }) {
-  const ytdSubLabel =
-    kpis.savedYtdAnnualUsdCents > 0
-      ? "Across recorded decisions"
+  const proven = kpis.provenSavedYtdAnnualUsdCents;
+  const projected = kpis.savedYtdAnnualUsdCents;
+  // Headline = proven when we have it; otherwise show the projection but label
+  // it as such and drop the success tone (it isn't banked yet).
+  const hasProven = proven > 0;
+  const savedLabel = hasProven ? "Saved this year" : "Projected savings";
+  const savedValue = formatCurrency(hasProven ? proven : projected);
+  const savedSubLabel = hasProven
+    ? projected > proven
+      ? `Proven · ${formatCurrency(projected - proven)} more projected`
+      : "Proven against actual spend"
+    : projected > 0
+      ? "Estimated — not yet reconciled"
       : "Log a decision to start counting";
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-stagger">
       <StatCard
-        tone="success"
-        label="Saved this year"
-        value={formatCurrency(kpis.savedYtdAnnualUsdCents)}
-        sublabel={ytdSubLabel}
+        tone={hasProven ? "success" : "default"}
+        label={savedLabel}
+        value={savedValue}
+        sublabel={savedSubLabel}
         icon={<Coins />}
       />
       <StatCard

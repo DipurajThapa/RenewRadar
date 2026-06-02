@@ -19,7 +19,7 @@ import {
 import { Badge } from "@ui/components/primitives/badge";
 import { AIInsightCard } from "@ui/components/shared/ai-insight-card";
 import { VendorBenchmarkCard } from "@ui/components/shared/vendor-benchmark-card";
-import { formatCurrency, formatDate } from "@shared/utils";
+import { formatCurrency, formatDate, isUuid } from "@shared/utils";
 import {
   RATIONALE_LABEL,
   NEGOTIATION_LEVER_LABEL,
@@ -36,6 +36,7 @@ export default async function VendorIntelligencePage({
 }: {
   params: { id: string };
 }) {
+  if (!isUuid(params.id)) notFound();
   const { account } = await getCurrentAccountAndUser();
   const vendor = await getVendor(account.id, params.id);
   if (!vendor) notFound();

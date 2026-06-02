@@ -1,6 +1,9 @@
 /**
  * /api/v1/subscriptions
- *   - GET: list active subscriptions for the authenticated account (paginated)
+ *   - GET: list subscriptions for the authenticated account (paginated).
+ *          Defaults to status=active (matches the OpenAPI contract). Pass
+ *          ?status=all or a comma-separated subset (e.g. ?status=active,draft)
+ *          to widen the filter.
  *   - POST: create a subscription + renewal event
  *
  * Both endpoints reuse the existing application-layer functions so the
@@ -38,11 +41,42 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const limit = clamp(Number(url.searchParams.get("limit") ?? "50"), 1, 200);
 
+  // The OpenAPI spec promised "active subscriptions" but the repo returned
+  // EVERY status (draft, cancelled, expired, …). Honor the documented default
+  // here, while exposing an explicit `?status=` for callers that want others.
+  // `?status=all` returns every status; comma-separated lists are supported.
+  const statusParam = url.searchParams.get("status");
+  const allowedStatuses = new Set([
+    "active",
+    "draft",
+    "paused",
+    "pending_cancellation",
+    "cancelled",
+    "expired",
+  ]);
+  let statusFilter: Set<string> | null;
+  if (statusParam == null || statusParam === "") {
+    statusFilter = new Set(["active"]);
+  } else if (statusParam === "all") {
+    statusFilter = null;
+  } else {
+    statusFilter = new Set(
+      statusParam
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => allowedStatuses.has(s))
+    );
+    if (statusFilter.size === 0) statusFilter = new Set(["active"]);
+  }
+
   const allRows = await listSubscriptions(account.id);
+  const filtered = statusFilter
+    ? allRows.filter((s) => statusFilter!.has(s.status))
+    : allRows;
   // The repo doesn't paginate yet (the dashboard reads all rows). Slice
   // server-side so the API contract supports limit even before the repo
   // grows offset/cursor pagination — added when account sizes warrant it.
-  const rows = allRows.slice(0, limit);
+  const rows = filtered.slice(0, limit);
 
   return NextResponse.json({
     // We project the existing SubscriptionRow shape directly. Fields like

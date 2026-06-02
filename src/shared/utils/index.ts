@@ -102,3 +102,15 @@ export function pluralize(count: number, singular: string, plural?: string): str
   if (count === 1) return `${count} ${singular}`;
   return `${count} ${plural ?? `${singular}s`}`;
 }
+
+// RFC 4122-shaped UUID (any variant). Used at route boundaries to short-circuit
+// `/subscriptions/<garbage>` into a clean 404 instead of letting the raw param
+// flow into a Drizzle eq(uuidColumn, …) query — Postgres rejects malformed
+// uuids with a stack-leaking 500, and the user lands on the generic error
+// boundary instead of the not-found page.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}

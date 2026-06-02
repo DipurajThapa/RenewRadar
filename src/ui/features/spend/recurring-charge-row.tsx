@@ -94,15 +94,36 @@ export function RecurringChargeRow(props: {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {hasMatch ? (
-            <button
-              type="button"
-              onClick={() => run("match", "Linked to existing subscription")}
-              disabled={pending}
-              className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background hover:bg-foreground/90 px-3 py-1.5 text-sm font-medium"
-            >
-              <Link2 className="h-3.5 w-3.5" />
-              Confirm match
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => run("match", "Linked to existing subscription")}
+                disabled={pending}
+                className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background hover:bg-foreground/90 px-3 py-1.5 text-sm font-medium"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Confirm match
+              </button>
+              {/* When the observed price differs from the linked sub's price,
+                  let the user link AND apply the new price in one click.
+                  Previously this path was reachable only via the API. */}
+              {props.amountDriftPct !== 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    run(
+                      "match_apply_price",
+                      "Linked and updated subscription price"
+                    )
+                  }
+                  disabled={pending}
+                  className="inline-flex items-center gap-1.5 rounded-md border bg-background hover:bg-muted/40 px-3 py-1.5 text-sm font-medium"
+                  title="Link and update the subscription's price to the latest charge"
+                >
+                  Match + update price
+                </button>
+              )}
+            </>
           ) : (
             <button
               type="button"

@@ -22,7 +22,9 @@ import {
   DocumentUploadError,
   uploadDocument,
 } from "@server/application/documents/upload";
+import { extractDocument } from "@server/application/documents/extract";
 import { inngest } from "@server/jobs/client";
+import { isDemoMode } from "@server/middleware/demo-mode";
 import { createLogger } from "@server/infrastructure/observability/logger";
 
 export const runtime = "nodejs";
@@ -144,19 +146,38 @@ export async function POST(req: Request) {
       // first upload already triggered (or failed) extraction; re-firing
       // would waste budget on identical content.
       if (!result.alreadyExisted) {
-        try {
-          await inngest.send({
-            name: "document/extract",
-            data: {
+        if (isDemoMode || process.env.AI_EXTRACT_INLINE === "true") {
+          // No Inngest worker runs in the local demo, so a fired event is
+          // silently dropped and the document is never extracted — the whole
+          // upload → AI-extraction → review-queue flow appears inert. Run the
+          // extraction inline (awaited) so the review queue actually fills.
+          // Same code path the Inngest job invokes, minus the worker hop.
+          try {
+            await extractDocument({
               accountId: account.id,
               documentId: result.document.id,
-            },
-          });
-        } catch (err) {
-          log.warn("inngest_send_failed", {
-            documentId: result.document.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
+            });
+          } catch (err) {
+            log.warn("inline_extraction_failed", {
+              documentId: result.document.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        } else {
+          try {
+            await inngest.send({
+              name: "document/extract",
+              data: {
+                accountId: account.id,
+                documentId: result.document.id,
+              },
+            });
+          } catch (err) {
+            log.warn("inngest_send_failed", {
+              documentId: result.document.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
 

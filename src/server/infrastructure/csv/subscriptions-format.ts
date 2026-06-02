@@ -199,10 +199,19 @@ export function parseSubscriptionCsv(
     const term_start = cellAt("term_start");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(term_start)) {
       errors.push("term_start must be YYYY-MM-DD");
+    } else if (!isRealCalendarDate(term_start)) {
+      // Regex-only acceptance let "2026-02-30" through — `new Date()` rolled it
+      // to Mar 2 silently, the preview marked the row "will create", and the
+      // insert later failed with a raw Postgres "date/time field value out of
+      // range." Catch the impossible date at preview so the user sees a clean
+      // validation message instead of a driver error at commit.
+      errors.push("term_start is not a real calendar date");
     }
     const term_end = cellAt("term_end");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(term_end)) {
       errors.push("term_end must be YYYY-MM-DD");
+    } else if (!isRealCalendarDate(term_end)) {
+      errors.push("term_end is not a real calendar date");
     }
     if (term_start && term_end && new Date(term_end) <= new Date(term_start)) {
       errors.push("term_end must be after term_start");
@@ -222,8 +231,14 @@ export function parseSubscriptionCsv(
       errors.push("seats must be a positive integer");
     }
 
-    const unit_price_dollars = Number(cellAt("unit_price_usd"));
-    if (!Number.isFinite(unit_price_dollars) || unit_price_dollars < 0) {
+    const unit_price_raw = cellAt("unit_price_usd");
+    const unit_price_dollars = Number(unit_price_raw);
+    if (unit_price_raw === "") {
+      // Empty / whitespace-only cell used to coerce to Number("")===0 and
+      // silently import a $0/period subscription — a real-world mispricing
+      // dressed up as a free plan. Require an explicit number.
+      errors.push("unit_price_usd is required");
+    } else if (!Number.isFinite(unit_price_dollars) || unit_price_dollars < 0) {
       errors.push("unit_price_usd must be a non-negative number");
     }
     const unit_price_cents = Math.round(unit_price_dollars * 100);
@@ -540,14 +555,32 @@ function normalizeHeaderKey(input: string): string {
     .replace(/ /g, "_");
 }
 
+/** True only for a date string that round-trips to the same calendar day —
+ *  i.e. an actual day on the Gregorian calendar, not a rollover like Feb 30. */
+function isRealCalendarDate(yyyyMmDd: string): boolean {
+  const d = new Date(`${yyyyMmDd}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.toISOString().slice(0, 10) === yyyyMmDd;
+}
+
 function escapeCsvCell(value: string): string {
   if (value === "") return "";
+  // Excel / Google Sheets / Numbers treat a cell beginning with `=` `+` `-` `@`
+  // (and tab/CR) as a FORMULA, executing whatever follows. User-controlled
+  // fields (vendor name, notes, …) export verbatim through this path. Prefix
+  // a single-quote — the conventional spreadsheet "treat as text" escape —
+  // so a malicious payload like `=HYPERLINK(...)` shows up as text, not a
+  // live formula. Done BEFORE the RFC-4180 quoting below.
+  let safe = value;
+  if (/^[=+\-@\t\r]/.test(safe)) {
+    safe = "'" + safe;
+  }
   // RFC 4180: any cell containing a comma, double-quote, CR, or LF must be
   // double-quoted; embedded double-quotes are doubled.
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  if (/[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 /**

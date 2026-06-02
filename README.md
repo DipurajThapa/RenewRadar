@@ -101,14 +101,14 @@ Full design + dataflow diagrams: **[docs/architecture/technical-specification.md
 
 The product is built to run **fully offline with genuinely-working defaults** until paid API keys / domains are purchased — so nothing is a stubbed dead-end:
 
-| Seam | Offline default (today) | Key-gated adapter (drops in later) |
+| Seam | Default (today) | Other adapters |
 |---|---|---|
-| AI reasoning (brief) | Deterministic multi-signal engine | Anthropic (`AI_REASONING_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`) |
-| AI extraction | Heuristic extractor | Anthropic |
+| AI reasoning (brief) | **Local LLM (Ollama, `qwen3.6`)** — `AI_REASONING_PROVIDER` defaults to `ollama`; **self-falls-back to the deterministic multi-signal engine** per-call when the model is unreachable. Set `AI_REASONING_PROVIDER=deterministic` to pin pure deterministic reasoning. | Anthropic (`AI_REASONING_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`) |
+| AI extraction | Local LLM (Ollama); heuristic extractor fallback | Anthropic |
 | Spend feed | Fixture connector (realistic dataset) | Ramp/Brex (`SPEND_*` keys) |
 | Storage / OCR / rate-limit | Local FS / pdf-parse / in-memory | S3 / cloud OCR / Upstash |
 
-Both AI engines are held to the **same evidence-binding validator**, and every claim is labeled with its real engine — a deterministic claim is never dressed up as an LLM one.
+All three reasoning engines (deterministic, local LLM, Anthropic) are held to the **same `validateBrief` evidence-binding validator**: every claim is labeled with its real engine, and an LLM claim may only cite a signal that was actually provided and may not introduce a dollar figure absent from the inputs — a deterministic claim is never dressed up as an LLM one, and the model can't smuggle a fabricated number past the gate.
 
 ---
 

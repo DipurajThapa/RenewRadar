@@ -239,14 +239,27 @@ describe("getVendorBenchmark aggregates", () => {
     void t;
   });
 
-  it("median annualized value is the contract-value median", async () => {
-    // 3 contracts of 120_000 cents/yr.
+  it("median annualized value is null at N=3 (privacy floor) and disclosed at N=5", async () => {
+    // At N=3 the median IS the middle account's exact contract — a privacy
+    // leak even though the cohort cleared MIN_BENCHMARK_SAMPLE. The
+    // benchmark itself is returned (qualitative stats are safe), but the
+    // per-account median is withheld below MIN_MEDIAN_DISCLOSURE_SAMPLE=5.
     await seedSampleAccounts({
       vendorNames: ["Calendly"],
       accountCount: 3,
       totalCostPerPeriodCents: 120_000,
     });
-    const bench = await getVendorBenchmark("Calendly");
+    let bench = await getVendorBenchmark("Calendly");
+    expect(bench).not.toBeNull();
+    expect(bench?.medianAnnualValueCents).toBeNull();
+
+    // Add 2 more accounts (N=5) — now the median may be disclosed.
+    await seedSampleAccounts({
+      vendorNames: ["Calendly"],
+      accountCount: 2,
+      totalCostPerPeriodCents: 120_000,
+    });
+    bench = await getVendorBenchmark("Calendly");
     expect(bench?.medianAnnualValueCents).toBe(120_000);
   });
 
@@ -293,10 +306,12 @@ describe("getVendorBenchmark aggregates", () => {
     expect(bench?.topLevers[0]?.lever).toBe("multi_year_commit");
   });
 
-  it("medianSavingsAnnualCents computed from actual savings rows", async () => {
+  it("medianSavingsAnnualCents is null at N=3 (privacy floor) and disclosed at N=5", async () => {
+    // Same per-account privacy floor as the median annual value. At N=3 the
+    // middle "saving" is one customer's actual realized $. Withheld until N≥5.
     const seeded = await seedSampleAccounts({
       vendorNames: ["Miro"],
-      accountCount: 3,
+      accountCount: 5,
     });
     // Create a renewal event + savings row per subscription.
     for (let i = 0; i < seeded.subscriptionIds.length; i++) {
@@ -314,7 +329,7 @@ describe("getVendorBenchmark aggregates", () => {
         })
         .returning();
       if (!event) throw new Error("event seed failed");
-      const saved = [10_000, 20_000, 30_000][i]!;
+      const saved = [10_000, 15_000, 20_000, 25_000, 30_000][i]!;
       await db.insert(savingsRecordsTable).values({
         accountId: seeded.accountIds[i]!,
         renewalEventId: event.id,
@@ -326,7 +341,7 @@ describe("getVendorBenchmark aggregates", () => {
       });
     }
     const bench = await getVendorBenchmark("Miro");
-    // Median of {10_000, 20_000, 30_000} = 20_000.
+    // Median of {10_000, 15_000, 20_000, 25_000, 30_000} = 20_000.
     expect(bench?.medianSavingsAnnualCents).toBe(20_000);
   });
 });

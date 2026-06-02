@@ -375,7 +375,11 @@ export function SubscriptionForm(props: Props) {
           <CardTitle>Notes (optional)</CardTitle>
         </CardHeader>
         <CardContent>
+          <label htmlFor="subscription-notes" className="sr-only">
+            Notes
+          </label>
           <textarea
+            id="subscription-notes"
             name="notes"
             rows={3}
             defaultValue={defaults.notes}

@@ -8,7 +8,7 @@ import { db } from "@server/infrastructure/db/client";
 import { usersTable } from "@server/infrastructure/db/schema";
 import { PageHeader } from "@ui/components/shared/page-header";
 import { Badge } from "@ui/components/primitives/badge";
-import { formatCurrency, formatDate } from "@shared/utils";
+import { formatCurrency, formatDate, isUuid } from "@shared/utils";
 import { IntakeReviewerActions } from "@ui/features/requests/reviewer-actions";
 import { WithdrawRequestButton } from "@ui/features/requests/withdraw-button";
 
@@ -20,6 +20,7 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const { account, user } = await getCurrentAccountAndUser();
   const req = await getIntakeRequest(account.id, id);
   if (!req) notFound();

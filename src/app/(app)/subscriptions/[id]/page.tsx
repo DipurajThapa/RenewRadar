@@ -18,7 +18,7 @@ import { assembleActionPackage } from "@server/application/action-package";
 import { fieldProvenance } from "@server/domain/provenance/labels";
 import type { RenewalItemFacts } from "@server/domain/provenance/missing-info";
 import type { RenewalIntelligenceBrief } from "@server/infrastructure/ai/reasoning/types";
-import { formatDate } from "@shared/utils";
+import { formatDate, isUuid } from "@shared/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,12 @@ export default async function SubscriptionDetailPage({
 }: {
   params: { id: string };
 }) {
+  // A garbage / non-UUID id used to flow into eq(uuid_col, …) and Postgres
+  // would throw "invalid input syntax for type uuid", surfacing as a 500
+  // error boundary instead of the not-found page. Short-circuit here.
+  if (!isUuid(params.id)) {
+    notFound();
+  }
   const { account } = await getCurrentAccountAndUser();
   const detail = await getSubscriptionDetail(account.id, params.id);
 

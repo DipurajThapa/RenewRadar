@@ -18,7 +18,7 @@ import { DecideNowForm } from "@ui/features/decide-now/form";
 import { RenewalBriefCard } from "@ui/features/renewal-brief/renewal-brief-card";
 import { VendorPlaybookCard } from "@ui/components/shared/vendor-playbook-card";
 import { VendorBenchmarkCard } from "@ui/components/shared/vendor-benchmark-card";
-import { formatCurrency, formatDate } from "@shared/utils";
+import { formatCurrency, formatDate, isUuid } from "@shared/utils";
 import { annualizeCents } from "@server/domain/billing/annualize";
 import type { SavingsRow } from "@server/infrastructure/db/repositories/savings";
 
@@ -33,6 +33,9 @@ export default async function DecideNowPage({ params, searchParams }: Props) {
   const { account, user } = await getCurrentAccountAndUser();
 
   if (!searchParams.event) {
+    notFound();
+  }
+  if (!isUuid(params.id) || !isUuid(searchParams.event)) {
     notFound();
   }
 

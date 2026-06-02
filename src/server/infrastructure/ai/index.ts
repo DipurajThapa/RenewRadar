@@ -113,10 +113,14 @@ export function _resetExtractionProviderForTests(
  * Renewal Intelligence Brief reasoner. Dedicated `AI_REASONING_PROVIDER` flag
  * (NOT the extraction flag) so flipping contract extraction doesn't silently
  * flip briefs too. Options:
- *   deterministic (default) — the genuinely-working offline engine.
- *   ollama | local          — local LLM (default qwen3.6 via Ollama). No key;
- *                             self-falls-back to deterministic per-call on any
- *                             failure, so it's always safe to select.
+ *   ollama | local (DEFAULT) — local LLM (default qwen3.6 via Ollama). No key;
+ *                             self-falls-back to the deterministic engine
+ *                             per-call on any failure, so it's always safe.
+ *                             Surviving LLM claims are held to the shared
+ *                             `validateBrief` grounding gate (cited source must
+ *                             exist; no invented figures).
+ *   deterministic           — the offline, no-LLM engine; select to pin briefs
+ *                             to pure deterministic reasoning (used in tests).
  *   anthropic               — hosted Claude; constructed only with flag AND key.
  * No path EVER mints a brief labeled "llm" unless a grounded LLM claim survived
  * the shared validator.
