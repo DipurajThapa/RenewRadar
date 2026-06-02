@@ -42,7 +42,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22 is the minimum supported by the codebase — the structural
+          # coverage tests (rbac-coverage, no-delete-coverage, audit-log
+          # coverage) use `glob` from `node:fs/promises`, which was added
+          # in Node 22.0 and is unavailable on Node 20.
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
