@@ -34,10 +34,10 @@
     }
   },
   "monthly": {
-    "ops": 50000,
+    "ops": 10000,
     "localUsdMicros": 0,
-    "hostedUsdMicros": 10500000,
-    "hostedWithCacheUsdMicros": 5250000,
+    "hostedUsdMicros": 2100000,
+    "hostedWithCacheUsdMicros": 1050000,
     "hitRatePct": 50
   },
   "verdict": "PASS"

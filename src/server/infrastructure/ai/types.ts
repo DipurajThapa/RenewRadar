@@ -38,6 +38,13 @@ export type ExtractionInput = {
    * to 1 for plain text.
    */
   pageCount?: number;
+  /**
+   * Few-shot exemplars mined from THIS account's reviewer corrections (D1) — a
+   * pre-formatted prompt block (see `formatExemplarsForPrompt`). An LLM provider
+   * prepends it so the model learns the account's domain fixes; deterministic /
+   * heuristic providers ignore it. The compounding data moat.
+   */
+  exemplars?: string;
 };
 
 export type ExtractedFieldDraft = {

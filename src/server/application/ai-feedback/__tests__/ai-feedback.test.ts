@@ -16,13 +16,18 @@ import {
   truncateAll,
   type SeedTwoAccountsResult,
 } from "@server/infrastructure/db/__tests__/test-harness";
+import { vi } from "vitest";
 import {
+  formatExemplarsForPrompt,
   getCalibrationModel,
   getCalibrationPoints,
   getConfidenceCalibration,
   getExtractionCorrections,
+  mineExemplars,
 } from "@server/application/ai-feedback";
 import { applyCalibration } from "@server/infrastructure/ai/eval/calibration";
+import { LocalLlmExtractionProvider } from "@server/infrastructure/ai/local-llm/extraction-provider";
+import type { LocalLlmClient } from "@server/infrastructure/ai/local-llm/client";
 
 let ids: SeedTwoAccountsResult;
 
@@ -194,5 +199,48 @@ describe("getCalibrationModel (D1 — the moat loop closing)", () => {
   it("is tenant-scoped", async () => {
     await seedDecided({ accountId: ids.accountA.id, reviewerUserId: ids.accountA.userId, fieldKey: "notice_period_days", confidence: 90, terminal: "rejected" });
     expect(await getCalibrationPoints(ids.accountB.id)).toHaveLength(0);
+  });
+});
+
+describe("mineExemplars + formatExemplarsForPrompt (D1 — the few-shot moat)", () => {
+  it("formatExemplarsForPrompt is empty until corrections exist, else carries the fix", () => {
+    expect(formatExemplarsForPrompt([])).toBe("");
+    const block = formatExemplarsForPrompt([
+      { fieldKey: "notice_period_days", evidenceQuote: "90 days written notice", wrongValueJson: { days: 30 }, correctValueJson: { days: 90 } },
+    ]);
+    expect(block).toContain("LEARNED CORRECTIONS");
+    expect(block).toContain("notice_period_days");
+    expect(block).toContain('{"days":90}');
+  });
+
+  it("mines only EDITED corrections (a reviewer's fix), not rejections", async () => {
+    const a = ids.accountA;
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "notice_period_days", confidence: 92, terminal: "edited" });
+    await seedDecided({ accountId: a.id, reviewerUserId: a.userId, fieldKey: "auto_renewal", confidence: 88, terminal: "rejected" });
+    const exemplars = await mineExemplars(a.id);
+    expect(exemplars).toHaveLength(1);
+    expect(exemplars[0]!.fieldKey).toBe("notice_period_days");
+    expect(exemplars[0]!.correctValueJson).toEqual({ days: 45 });
+  });
+
+  it("is tenant-scoped", async () => {
+    await seedDecided({ accountId: ids.accountA.id, reviewerUserId: ids.accountA.userId, fieldKey: "notice_period_days", confidence: 92, terminal: "edited" });
+    expect(await mineExemplars(ids.accountB.id)).toHaveLength(0);
+  });
+
+  it("the extraction provider injects exemplars into the system prompt", async () => {
+    let capturedSystem = "";
+    const fakeClient: Pick<LocalLlmClient, "chatJson" | "model"> = {
+      model: "qwen-test",
+      chatJson: vi.fn(async (args: { system: string }) => {
+        capturedSystem = args.system;
+        return { fields: [] } as never;
+      }),
+    };
+    await new LocalLlmExtractionProvider(fakeClient).extract({
+      text: "The renewal date is 2026-12-31.",
+      exemplars: "LEARNED CORRECTIONS — notice_period_days should be 90.",
+    });
+    expect(capturedSystem).toContain("LEARNED CORRECTIONS");
   });
 });

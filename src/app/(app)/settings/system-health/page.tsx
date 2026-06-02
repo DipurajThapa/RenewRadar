@@ -207,6 +207,45 @@ export default async function SystemHealthPage() {
         </CardContent>
       </Card>
 
+      {/* AI serving observability (Phase B/B6) — token usage, cache, spend. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="h-4 w-4" />
+            AI serving
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Reasoning throughput, cache effectiveness, and this account&apos;s
+            monthly AI spend vs its tier cap. Process counters reset on restart.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Stat label="LLM calls (since boot)" value={health.serving.process.calls.toLocaleString()} />
+            <Stat label="Tokens (since boot)" value={health.serving.process.totalTokens.toLocaleString()} />
+            <Stat label="Cache hit rate" value={`${health.serving.cache.hitRatePct}%`} />
+            <Stat
+              label="Reasoning ops this month"
+              value={health.serving.reasoning.callsThisMonth.toLocaleString()}
+            />
+          </div>
+          <div className="text-xs text-muted-foreground">
+            <TrendingUp className="inline-block h-3 w-3 mr-1" />
+            AI reasoning spend this month:{" "}
+            <strong className="text-foreground">
+              ${(health.serving.reasoning.costThisMonthUsdMicros / 1_000_000).toFixed(4)}
+            </strong>{" "}
+            of{" "}
+            {health.serving.reasoning.capIsFinite
+              ? `$${(health.serving.reasoning.capUsdMicros / 1_000_000).toFixed(2)}`
+              : "unlimited"}
+            {health.serving.reasoning.percentUsed !== null && (
+              <span className="ml-1">({health.serving.reasoning.percentUsed}% used)</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Integrations */}
       <Card>
         <CardHeader>

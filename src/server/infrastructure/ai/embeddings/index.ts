@@ -32,3 +32,4 @@ export function _resetEmbeddingsProviderForTests(provider?: EmbeddingsProvider |
 
 export type { EmbeddingsProvider } from "./types";
 export { cosineSimilarity, rankBySimilarity, l2normalize } from "./vector";
+export type { RankedItem } from "./vector";

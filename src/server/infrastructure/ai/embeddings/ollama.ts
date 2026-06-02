@@ -1,6 +1,13 @@
 /**
- * Neural embeddings via a local Ollama embed model (LOCAL_EMBED_MODEL, e.g.
- * `nomic-embed-text`). Uses Ollama's `/api/embed` ({model, input[]} → {embeddings}).
+ * Neural embeddings via a local Ollama embed model. Uses Ollama's `/api/embed`
+ * ({model, input[]} → {embeddings}).
+ *
+ * Default model is `all-minilm` (sentence-similarity), NOT `nomic-embed-text`:
+ * measured on this product's SHORT structured fact strings, nomic does not
+ * separate relevant from irrelevant ("weather in Tokyo" ≈0.51 ≈ on-topic), while
+ * all-minilm gives a clean gap (weather ≈0.10 vs on-topic ≈0.27–0.50). Pick the
+ * model to the data — proven, not assumed.
+ *
  * ALWAYS SAFE: any failure (no embed model pulled, server down, bad response)
  * self-falls-back to the deterministic lexical provider — so turning embeddings
  * on never breaks retrieval, it just degrades to lexical ranking.
@@ -23,7 +30,7 @@ export class OllamaEmbeddingsProvider implements EmbeddingsProvider {
 
   constructor(env: NodeJS.ProcessEnv = process.env) {
     this.baseUrl = (env.LOCAL_LLM_BASE_URL || "http://localhost:11434").replace(/\/+$/, "");
-    this.model = env.LOCAL_EMBED_MODEL || "nomic-embed-text";
+    this.model = env.LOCAL_EMBED_MODEL || "all-minilm";
     this.timeoutMs = Number(env.LOCAL_EMBED_TIMEOUT_MS ?? 20_000);
   }
 
